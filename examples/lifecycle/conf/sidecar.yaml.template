@@ -21,7 +21,7 @@
 #
 cassandra_instances:
   - id: 1
-    host: localhost1
+    host: localhost
     port: 9042
 
     # The instance's storage directory as defined per the cassandra.storagedir property
@@ -30,7 +30,7 @@ cassandra_instances:
     # commitlog dir, cdc dir, hints dir and saved caches dir. If data_dirs, commitlog_dir,
     # cdc_dir, hints_dir and saved_caches_dir are configured explicitly, then they will be used.
     # Otherwise, default paths based on storage directory will be used.
-    storage_dir: /var/lib/cassandra
+    storage_dir: $baseDir/var/lib/cassandra
 
     # List of directories where Cassandra stores data on disk. If not set, the default directory
     # is <storage_dir>/data
@@ -67,8 +67,8 @@ cassandra_instances:
 #    jmx_role:
 #    jmx_role_password:
     lifecycle_options:
-      cassandra_conf_dir: /etc/cassandra
-#     cassandra_log_dir: /var/log/cassandra
+      cassandra_conf_dir: $baseDir/etc/cassandra
+      cassandra_log_dir: $baseDir/var/log/cassandra
 
 sidecar:
   host: 0.0.0.0
@@ -416,16 +416,16 @@ live_migration:
   dirs_to_exclude:
     - glob:${DATA_FILE_DIR}/*/*/snapshots # Excludes snapshot directories in data folder to copy to destination
   migration_map:                          # Map of source and destination Cassandra instances
-#    localhost1: localhost4               # This entry says that localhost1 will be migrated to localhost4
+#    localhost: localhost4               # This entry says that localhost will be migrated to localhost4
 
 # Configuration to allow sidecar start and stop Cassandra instances via the lifecycle API (disabled by default)
 lifecycle:
-  enabled: false
+  enabled: true
   provider:
     class_name: org.apache.cassandra.sidecar.lifecycle.ProcessLifecycleProvider
     parameters:
-      state_dir: /var/lib/cassandra-sidecar/lifecycle # The directory where the process state is stored
-      cassandra_home: /opt/cassandra # The default Cassandra installation directory
-#     cassandra.ring_delay_ms: 30000   # It is possible to override Cassandra JVM options via the "cassandra." prefix
-#     env.MAX_HEAP_SIZE: 8G # It is possible to set environment variables used to start Cassandra via the "env" prefix
-#     env.HEAP_NEWSIZE: 8G
+      state_dir: $baseDir/var/lib/cassandra-sidecar/lifecycle # The directory where the process state is stored
+      cassandra_home: $cassandraHome # The default Cassandra installation directory
+      cassandra.ring_delay_ms: 5000   # It is possible to override Cassandra JVM options via the "cassandra." prefix
+      env.MAX_HEAP_SIZE: 4G # It is possible to set environment variables used to start Cassandra via the "env" prefix
+      env.HEAP_NEWSIZE: 4G

@@ -250,6 +250,7 @@ public class ConfigurationModule extends AbstractModule
                                    .hintsDir(cassandraInstance.hintsDir())
                                    .savedCachesDir(cassandraInstance.savedCachesDir())
                                    .localSystemDataFileDir(cassandraInstance.localSystemDataFileDir())
+                                   .lifecycleOptions(cassandraInstance.lifecycleOptions())
                                    .delegate(delegate)
                                    .metricRegistry(instanceSpecificRegistry)
                                    .build();

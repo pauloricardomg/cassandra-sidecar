@@ -21,7 +21,7 @@
 #
 cassandra_instances:
   - id: 1
-    host: localhost1
+    host: localhost
     port: 9042
 
     # The instance's storage directory as defined per the cassandra.storagedir property
@@ -30,7 +30,7 @@ cassandra_instances:
     # commitlog dir, cdc dir, hints dir and saved caches dir. If data_dirs, commitlog_dir,
     # cdc_dir, hints_dir and saved_caches_dir are configured explicitly, then they will be used.
     # Otherwise, default paths based on storage directory will be used.
-    storage_dir: /var/lib/cassandra
+    storage_dir: ${cassandraStorageDir}
 
     # List of directories where Cassandra stores data on disk. If not set, the default directory
     # is <storage_dir>/data
@@ -67,8 +67,8 @@ cassandra_instances:
 #    jmx_role:
 #    jmx_role_password:
     lifecycle_options:
-      cassandra_conf_dir: /etc/cassandra
-#     cassandra_log_dir: /var/log/cassandra
+      cassandra_conf_dir: ${cassandraConfDir}
+      cassandra_log_dir: ${cassandraLogDir}
 
 sidecar:
   host: 0.0.0.0
@@ -165,26 +165,10 @@ sidecar:
       # The minimum value allowed for the cluster lease claim process task implementation is 30 seconds
       execute_interval: 100s
 
-# Exposes vertx configurations
 vertx:
-  # Configuration options for the vertx filesystem
-  # These options will affect the behavior when serving static resources from the
-  # classpath. For example, setting classpath_resolving_enabled to false will cause
-  # the static file resolution to only look for files in the filesystem and avoid
-  # resolving resources from the classpath.
   filesystem_options:
-    # When vert.x cannot find the file on the filesystem it tries to resolve the
-    # file from the classpath when this is set to true. Otherwise, vert.x
-    # will not attempt to resolve the file on the classpath
-    classpath_resolving_enabled: true
-    # Set to true to enable caching files on the real file system
-    # when the filesystem performs class path resolving. Set to false to
-    # disable caching.
-    file_caching_enabled: true
-    # When vert.x reads a file that is packaged with the application it gets
-    # extracted to this directory first and subsequent reads will use the extracted
-    # file to get better IO performance.
-    #file_cache_dir: /tmp
+    classpath_resolving_enabled: false
+    file_caching_enabled: false
 
 schema_reporting:                            # Schema Reporting configuration
   enabled:          false                    # Disabled by default
@@ -420,12 +404,12 @@ live_migration:
 
 # Configuration to allow sidecar start and stop Cassandra instances via the lifecycle API (disabled by default)
 lifecycle:
-  enabled: false
-  provider:
-    class_name: org.apache.cassandra.sidecar.lifecycle.ProcessLifecycleProvider
-    parameters:
-      state_dir: /var/lib/cassandra-sidecar/lifecycle # The directory where the process state is stored
-      cassandra_home: /opt/cassandra # The default Cassandra installation directory
-#     cassandra.ring_delay_ms: 30000   # It is possible to override Cassandra JVM options via the "cassandra." prefix
-#     env.MAX_HEAP_SIZE: 8G # It is possible to set environment variables used to start Cassandra via the "env" prefix
-#     env.HEAP_NEWSIZE: 8G
+    enabled: true
+    provider:
+        class_name: org.apache.cassandra.sidecar.lifecycle.ProcessLifecycleProvider
+        parameters:
+          state_dir: ${lifecycleDir}
+          cassandra_home: ${cassandraHome} # The default Cassandra installation directory
+          cassandra.ring_delay_ms: 5000   # down from 30s default
+          env.MAX_HEAP_SIZE: 4G # this should be enough, since we only start and stop cassandra
+          env.HEAP_NEWSIZE: 1G # this should be enough, since we only start and stop cassandra
