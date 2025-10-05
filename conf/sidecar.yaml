@@ -66,6 +66,9 @@ cassandra_instances:
     jmx_ssl_enabled: false
 #    jmx_role:
 #    jmx_role_password:
+    lifecycle_options:
+      cassandra_conf_dir: /etc/cassandra
+#     cassandra_log_dir: /var/log/cassandra
 
 sidecar:
   host: 0.0.0.0
@@ -438,3 +441,15 @@ live_migration:
   migration_map:                          # Map of source and destination Cassandra instances
 #    localhost1: localhost4               # This entry says that localhost1 will be migrated to localhost4
   max_concurrent_downloads: 20            # Maximum number of concurrent downloads allowed
+
+# Configuration to allow sidecar start and stop Cassandra instances via the lifecycle API (disabled by default)
+lifecycle:
+  enabled: false
+  provider:
+    class_name: org.apache.cassandra.sidecar.lifecycle.ProcessLifecycleProvider
+    parameters:
+      state_dir: /var/lib/cassandra-sidecar/lifecycle # The directory where the process state is stored
+      cassandra_home: /opt/cassandra # The default Cassandra installation directory
+#     cassandra.ring_delay_ms: 30000   # It is possible to override Cassandra JVM options via the "cassandra." prefix
+#     env.MAX_HEAP_SIZE: 8G # It is possible to set environment variables used to start Cassandra via the "env" prefix
+#     env.HEAP_NEWSIZE: 8G

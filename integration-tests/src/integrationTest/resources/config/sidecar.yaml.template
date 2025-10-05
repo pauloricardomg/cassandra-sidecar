@@ -17,57 +17,11 @@
 #
 
 #
-# Cassandra Sidecar configuration file for a 3-node CCM cluster with name sidecardemo
+# Cassandra Sidecar configuration file
 #
 cassandra_instances:
   - id: 1
-    host: localhost1
-    port: 9042
-    # The instance's storage directory as defined per the cassandra.storagedir property
-    # which defaults to the $CASSANDRA_HOME/data directory, but can be configured to any
-    # directory. By default, storage directory is the parent directory of data dirs,
-    # commitlog dir, cdc dir, hints dir and saved caches dir. If data_dirs, commitlog_dir,
-    # cdc_dir, hints_dir and saved_caches_dir are configured explicitly, then they will be used.
-    # Otherwise, default paths based on storage directory will be used.
-    #storage_dir: ~/.ccm/sidecardemo/node1
-
-    # List of directories where Cassandra stores data on disk. If not set, the default directory
-    # is <storage_dir>/data
-    data_dirs:
-      - ~/.ccm/sidecardemo/node1/data0
-
-    # A temporary directory used to stage sstables before importing them into Cassandra.
-    staging_dir: ~/.ccm/sidecardemo/node1/sstable-staging
-
-    # Directory where Cassandra stores mutations. If not set, the default directory is
-    # <storage_dir>/cdc_raw.
-    cdc_dir: ~/.ccm/sidecardemo/node1/cdc_raw
-
-    # Directory where Cassandra stores the commit logs. If not set, the default directory
-    # is <storage_dir>/commitlog
-    commitlog_dir: ~/.ccm/sidecardemo/node1/commitlog
-
-    # Directory where Cassandra stores hints. If not set, the default directory is
-    # <storage_dir>/hints.
-    hints_dir: ~/.ccm/sidecardemo/node1/hints
-
-    # Directory where Cassandra stores the saved caches. If not set, the default directory
-    # is <storage_dir>/saved_caches
-    saved_caches_dir: ~/.ccm/sidecardemo/node1/saved_caches
-
-    # Directory where Cassandra stores the data of the local system keyspaces.
-    # By default, Cassandra stores the data of the local system keyspaces in the
-    # first of the data directories specified by data_file_directories.
-    # local_system_data_file_directory:
-
-    jmx_host: 127.0.0.1
-    jmx_port: 7100
-    jmx_ssl_enabled: false
-#    jmx_role:
-#    jmx_role_password:
-
-  - id: 2
-    host: localhost2
+    host: localhost
     port: 9042
 
     # The instance's storage directory as defined per the cassandra.storagedir property
@@ -76,88 +30,45 @@ cassandra_instances:
     # commitlog dir, cdc dir, hints dir and saved caches dir. If data_dirs, commitlog_dir,
     # cdc_dir, hints_dir and saved_caches_dir are configured explicitly, then they will be used.
     # Otherwise, default paths based on storage directory will be used.
-    #storage_dir: ~/.ccm/sidecardemo/node2
+    storage_dir: ${cassandraStorageDir}
 
     # List of directories where Cassandra stores data on disk. If not set, the default directory
     # is <storage_dir>/data
-    data_dirs:
-      - ~/.ccm/sidecardemo/node2/data0
+    #data_dirs:
+    #  - /var/lib/cassandra/data
 
     # A temporary directory used to stage sstables before importing them into Cassandra.
-    staging_dir: ~/.ccm/sidecardemo/node2/sstable-staging
+    staging_dir: /var/lib/cassandra/sstable-staging
 
     # Directory where Cassandra stores mutations. If not set, the default directory is
     # <storage_dir>/cdc_raw.
-    cdc_dir: ~/.ccm/sidecardemo/node2/cdc_raw
+    #cdc_dir: /var/lib/cassandra/cdc_raw
 
     # Directory where Cassandra stores the commit logs. If not set, the default directory
     # is <storage_dir>/commitlog
-    commitlog_dir: ~/.ccm/sidecardemo/node2/commitlog
+    #commitlog_dir: /var/lib/cassandra/commitlog
 
     # Directory where Cassandra stores hints. If not set, the default directory is
     # <storage_dir>/hints.
-    hints_dir: ~/.ccm/sidecardemo/node2/hints
+    #hints_dir: /var/lib/cassandra/hints
 
     # Directory where Cassandra stores the saved caches. If not set, the default directory
     # is <storage_dir>/saved_caches
-    saved_caches_dir: ~/.ccm/sidecardemo/node2/saved_caches
+    #saved_caches_dir: /var/lib/cassandra/saved_caches
 
     # Directory where Cassandra stores the data of the local system keyspaces.
     # By default, Cassandra stores the data of the local system keyspaces in the
     # first of the data directories specified by data_file_directories.
-    # local_system_data_file_directory:
+    # local_system_data_file_dir:
 
     jmx_host: 127.0.0.1
-    jmx_port: 7200
+    jmx_port: 7199
     jmx_ssl_enabled: false
 #    jmx_role:
 #    jmx_role_password:
-
-  - id: 3
-    host: localhost3
-    port: 9042
-
-    # The instance's storage directory as defined per the cassandra.storagedir property
-    # which defaults to the $CASSANDRA_HOME/data directory, but can be configured to any
-    # directory. By default, storage directory is the parent directory of data dirs,
-    # commitlog dir, cdc dir, hints dir and saved caches dir. If data_dirs, commitlog_dir,
-    # cdc_dir, hints_dir and saved_caches_dir are configured explicitly, then they will be used.
-    # Otherwise, default paths based on storage directory will be used.
-    #storage_dir: ~/.ccm/sidecardemo/node3
-
-    # List of directories where Cassandra stores data on disk. If not set, the default directory
-    # is <storage_dir>/data
-    data_dirs:
-      - ~/.ccm/sidecardemo/node3/data0
-
-    # A temporary directory used to stage sstables before importing them into Cassandra.
-    staging_dir: ~/.ccm/sidecardemo/node3/sstable-staging
-
-    # Directory where Cassandra stores mutations. If not set, the default directory is
-    # <storage_dir>/cdc_raw.
-    cdc_dir: ~/.ccm/sidecardemo/node3/cdc_raw
-
-    # Directory where Cassandra stores the commit logs. If not set, the default directory
-    # is <storage_dir>/commitlog
-    commitlog_dir: ~/.ccm/sidecardemo/node3/commitlog
-
-    # Directory where Cassandra stores hints. If not set, the default directory is
-    # <storage_dir>/hints.
-    hints_dir: ~/.ccm/sidecardemo/node3/hints
-
-    # Directory where Cassandra stores the saved caches. If not set, the default directory
-    # is <storage_dir>/saved_caches
-    saved_caches_dir: ~/.ccm/sidecardemo/node3/saved_caches
-
-    # Directory where Cassandra stores the data of the local system keyspaces.
-    # By default, Cassandra stores the data of the local system keyspaces in the
-    # first of the data directories specified by data_file_directories.
-    # local_system_data_file_directory:
-    jmx_host: 127.0.0.1
-    jmx_port: 7300
-    jmx_ssl_enabled: false
-#    jmx_role:
-#    jmx_role_password:
+    lifecycle_options:
+      cassandra_conf_dir: ${cassandraConfDir}
+      cassandra_log_dir: ${cassandraLogDir}
 
 sidecar:
   host: 0.0.0.0
@@ -167,6 +78,10 @@ sidecar:
   tcp_keep_alive: false
   accept_backlog: 1024
   server_verticle_instances: 1
+  # DnsResolver to use (org.apache.cassandra.sidecar.common.server.dns.DnsResolver). Currently supported
+  # values are 'default' and 'resolve_to_ip'. Default will resolve hostnames to addresses and addresses to
+  # hostnames whereas resolve_to_ip will only resolve hostnames to addresses.
+  dns_resolver: default
   throttle:
     stream_requests_per_sec: 5000
     timeout: 10s
@@ -267,24 +182,28 @@ schema_reporting:                            # Schema Reporting configuration
 #
 # Enable SSL configuration (Disabled by default)
 #
-#  ssl:
-#    enabled: true
-#    use_openssl: true
-#    handshake_timeout: 10s
-#    client_auth: NONE # valid options are NONE, REQUEST, REQUIRED
-#    accepted_protocols:
-#     - TLSv1.2
-#     - TLSv1.3
-#    cipher_suites: []
-#    keystore:
-#      type: PKCS12
-#      path: "path/to/keystore.p12"
-#      password: password
-#      check_interval: 5m
-#    truststore:
-#      path: "path/to/truststore.p12"
-#      password: password
+#ssl:
+#  enabled: true
+#  use_openssl: true
+#  handshake_timeout: 10s
+#  client_auth: NONE # valid options are NONE, REQUEST, REQUIRED
+#  accepted_protocols:
+#   - TLSv1.2
+#   - TLSv1.3
+#  cipher_suites: []
+#  keystore:
+#    type: PKCS12
+#    path: "path/to/keystore.p12"
+#    password: password
+#    check_interval: 5m
+#  truststore:
+#    path: "path/to/truststore.p12"
+#    password: password
 
+# To enable access control, the role used by sidecar to talk to Cassandra must be granted following permissions
+# - GRANT DESCRIBE ON ALL ROLES to <insert_sidecar_role>          - Allows sidecar to list roles that belong to a user
+# - GRANT SELECT ON KEYSPACE system_auth to <insert_sidecar_role> - Allows sidecar to read from roles and
+#                                                                   role_permissions table
 access_control:
   # When enabled requests need to be authenticated and authorized before servicing.
   enabled: false
@@ -348,8 +267,6 @@ access_control:
 driver_parameters:
   contact_points:
     - "127.0.0.1:9042"
-    - "127.0.0.2:9042"
-    - "127.0.0.3:9042"
   username: cassandra
   password: cassandra
   ssl:
@@ -456,3 +373,43 @@ s3_client:
 #    uri:
 #    username:
 #    password:
+
+live_migration:
+  # By default, the directories handled by Cassandra like data_dir, commitlog_dir, hints_dir, saved_caches_dir,
+  # cdc_dir, and local_system_data_file_dir are included as part of migration. Admin/operator can exclude files
+  # and directories from migration by specifying them in the `files_to_exclude` list and the `dirs_to_exclude`
+  # list configurations mentioned below.
+  #
+  # 'glob' and 'regex' patterns can be used to specify exclusions. Internally, Java's java.nio.file.PathMatcher
+  # is used to evaluate these exclusions. Exclusions should be specified in the format "syntax:pattern" expected
+  # by PathMatcher. There is no need to specify the absolute path of directories handled by Cassandra.
+  # They can be specified using the supported placeholders listed below.
+  #
+  #    COMMITLOG_DIR              - commit log directory
+  #    HINTS_DIR                  - hints directory
+  #    SAVED_CACHES_DIR           - saved caches directory
+  #    CDC_RAW_DIR                - cdc raw directory
+  #    LOCAL_SYSTEM_DATA_FILE_DIR - local system data file data directory
+  #    DATA_FILE_DIR              - all data directories
+  #    DATA_FILE_DIR_0            - first data directory
+  #    DATA_FILE_DIR_1            - second data directory
+  #
+  # A sample glob pattern to exclude all snapshot folders from Live Migration looks like this:
+  #    glob:${DATA_FILE_DIR}/*/*/snapshots
+  files_to_exclude: [ ]                   # List of files to exclude from Live Migration.
+  dirs_to_exclude:
+    - glob:${DATA_FILE_DIR}/*/*/snapshots # Excludes snapshot directories in data folder to copy to destination
+  migration_map:                          # Map of source and destination Cassandra instances
+#    localhost1: localhost4               # This entry says that localhost1 will be migrated to localhost4
+
+# Configuration to allow sidecar start and stop Cassandra instances via the lifecycle API (disabled by default)
+lifecycle:
+    enabled: true
+    provider:
+        class_name: org.apache.cassandra.sidecar.lifecycle.ProcessLifecycleProvider
+        parameters:
+          state_dir: ${lifecycleDir}
+          cassandra_home: ${cassandraHome} # The default Cassandra installation directory
+          cassandra.ring_delay_ms: 5000   # down from 30s default
+          env.MAX_HEAP_SIZE: 4G # this should be enough, since we only start and stop cassandra
+          env.HEAP_NEWSIZE: 1G # this should be enough, since we only start and stop cassandra
