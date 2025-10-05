@@ -110,6 +110,10 @@ jobs:
           root: dtest-jars
           paths:
             - "*.jar"
+      - persist_to_workspace:
+          root: cassandra-tarballs
+          paths:
+            - "*.tar.gz"
 
   integration_cassandra_40_java11:
     docker:

@@ -32,6 +32,7 @@ import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.CleanupMode;
@@ -56,6 +57,7 @@ import static org.apache.cassandra.sidecar.utils.TestFileUtils.replacePlaceholde
  * Process lifecycle provider integration test.
  */
 @ExtendWith(VertxExtension.class)
+@Tag("heavy")
 public class ProcessLifecycleProviderIntegrationTest
 {
     static final String TEST_NODE = "localhost";
