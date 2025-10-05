@@ -17,7 +17,6 @@
  */
 
 import java.nio.file.Paths
-import java.lang.IllegalStateException
 
 def integrationMaxHeapSize = System.getenv("INTEGRATION_MAX_HEAP_SIZE") ?: "3000M"
 println("Using ${integrationMaxHeapSize} maxHeapSize")
@@ -35,12 +34,14 @@ def getCassandraTarballLocation() {
     if (tarballsDirFile.exists() && tarballsDirFile.isDirectory()) {
         def filesInDir = fileTree(tarballsDirFile).files.sort { it.name } // Sort by name alphabetically
         if (!filesInDir.isEmpty()) {
-            return filesInDir.first()
+            def tarballToTest = filesInDir.first()
+            logger.info("Testing with tarball ${tarballToTest}") // TODO: test against multiple versions
+            return tarballToTest
         } else {
-            throw new IllegalStateException("No tarballs found in the directory: ${tarballsDir}. Use script build-dtest-jars.sh to build it.")
+            logger.warn("WARN: No tarballs found in the directory: ${tarballsDir}. Use script build-dtest-jars.sh to build it.")
         }
     } else {
-        throw new IllegalStateException("Tarballs directory does not exist or is not a directory: ${tarballsDir}. Use script build-dtest-jars.sh to build it.")
+        logger.warn("WARN: Tarballs directory does not exist or is not a directory: ${tarballsDir}. Use script build-dtest-jars.sh to build it.")
     }
 }
 
