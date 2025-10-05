@@ -193,7 +193,16 @@ dependencies {
     containerTestImplementation('com.adobe.testing:s3mock-testcontainers:2.17.0') // 3.x version do not support java 11
 }
 
+// Ensure encoding is UTF-8 to support WSL
+compileJava {
+    options.encoding = 'UTF-8'
+}
+compileTestJava {
+    options.encoding = 'UTF-8'
+}
+
 test {
+    systemProperty 'file.encoding', 'UTF-8'
     systemProperty "vertxweb.environment", "dev"
     systemProperty "vertx.logger-delegate-factory-class-name", "io.vertx.core.logging.SLF4JLogDelegateFactory"
     // There is no native lib (JNR) for getting time for testing

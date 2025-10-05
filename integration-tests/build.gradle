@@ -76,5 +76,13 @@ dependencies {
     integrationTestCompileOnly(group: 'com.intellij', name: 'annotations', version: '12.0')
 }
 
+// Ensure encoding is UTF-8 to support WSL
+compileJava {
+    options.encoding = 'UTF-8'
+}
+compileTestJava {
+    options.encoding = 'UTF-8'
+}
+
 apply from: "${project.rootDir}/gradle/common/integrationTestTask.gradle"
 check.dependsOn integrationTest
