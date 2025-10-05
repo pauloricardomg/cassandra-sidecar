@@ -25,6 +25,7 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,38 +109,40 @@ public class ProcessLifecycleProvider implements LifecycleProvider
 
     private void startCassandra(InstanceMetadata instance)
     {
-        CassandraProcessConfiguration casCfg = buildCassandraConfig(instance);
+        ProcessRuntimeConfiguration runtimeConfig = getRuntimeConfiguration(instance);
         try
         {
-            String stdoutLocation = getStdoutLocation(casCfg.instanceName());
-            String stderrLocation = getStderrLocation(casCfg.instanceName());
-            String pidFileLocation = getPidFileLocation(casCfg.instanceName());
-            ProcessBuilder processBuilder = casCfg.buildStartCommand(pidFileLocation,
+            String stdoutLocation = getStdoutLocation(runtimeConfig.instanceName());
+            String stderrLocation = getStderrLocation(runtimeConfig.instanceName());
+            String pidFileLocation = getPidFileLocation(runtimeConfig.instanceName());
+            ProcessBuilder processBuilder = runtimeConfig.buildStartCommand(pidFileLocation,
                                                                      stdoutLocation,
                                                                      stderrLocation);
-            LOG.info("Starting Cassandra instance {} with command: {}", casCfg.instanceName(), processBuilder.command());
+            LOG.info("Starting Cassandra instance {} with command: {}", runtimeConfig.instanceName(), processBuilder.command());
+
             Process process = processBuilder.start();
-            process.waitFor();
-            waitForPid(casCfg.instanceName(), getPidFileLocation(casCfg.instanceName()), true);
+            // TODO: replace blocking calls if needed
+            process.waitFor(CASSANDRA_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            waitForPid(runtimeConfig.instanceName(), getPidFileLocation(runtimeConfig.instanceName()), true);
             if (isCassandraProcessRunning(instance))
             {
-                LOG.info("Started Cassandra instance {} with PID {}", casCfg.instanceName(), readPidFromFile(Path.of(pidFileLocation)));
+                LOG.info("Started Cassandra instance {} with PID {}", runtimeConfig.instanceName(), readPidFromFile(Path.of(pidFileLocation)));
             }
             else
             {
-                throw new RuntimeException("Failed to start Cassandra instance " + casCfg.instanceName() +
+                throw new RuntimeException("Failed to start Cassandra instance " + runtimeConfig.instanceName() +
                                            ". Check stdout at " + stdoutLocation + " and stderr at " + stderrLocation);
             }
         }
         catch (IOException | InterruptedException e)
         {
-            throw new RuntimeException("Failed to start Cassandra instance " + casCfg.instanceName() + " due to " + e.getMessage(), e);
+            throw new RuntimeException("Failed to start Cassandra instance " + runtimeConfig.instanceName() + " due to " + e.getMessage(), e);
         }
     }
 
     private void stopCassandra(InstanceMetadata instance)
     {
-        CassandraProcessConfiguration casCfg = buildCassandraConfig(instance);
+        ProcessRuntimeConfiguration casCfg = getRuntimeConfiguration(instance);
         try
         {
             String pidFileLocation = getPidFileLocation(casCfg.instanceName());
@@ -149,7 +152,8 @@ public class ProcessLifecycleProvider implements LifecycleProvider
             LOG.info("Stopping Cassandra instance {} with command: {}", casCfg.instanceName(), processBuilder.command());
             Long pid = readPidFromFile(Path.of(pidFileLocation));
             Process process = processBuilder.start();
-            process.waitFor();
+            // TODO: replace blocking calls if needed
+            process.waitFor(CASSANDRA_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             waitForPid(casCfg.instanceName(), pidFileLocation, false);
             if (isCassandraProcessRunning(instance))
             {
@@ -191,13 +195,13 @@ public class ProcessLifecycleProvider implements LifecycleProvider
     }
 
     @VisibleForTesting
-    protected CassandraProcessConfiguration buildCassandraConfig(InstanceMetadata instance)
+    protected ProcessRuntimeConfiguration getRuntimeConfiguration(InstanceMetadata instance)
     {
         String cassandraHome = Optional.ofNullable(instance.lifecycleOptions().get(OPT_CASSANDRA_HOME))
                                        .orElse(defaultCassandraHome);
         String cassandraConfDir = instance.lifecycleOptions().get(OPT_CASSANDRA_CONF_DIR);
         String cassandraLogDir = instance.lifecycleOptions().get(OPT_CASSANDRA_LOG_DIR);
-        return new CassandraProcessConfiguration.Builder()
+        return new ProcessRuntimeConfiguration.Builder()
                                         .withHost(instance.host())
                                         .withCassandraHome(cassandraHome)
                                         .withCassandraConfDir(cassandraConfDir)

@@ -35,9 +35,9 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Tests for {@link CassandraProcessConfiguration}
+ * Tests for {@link ProcessRuntimeConfiguration}
  */
-class CassandraProcessConfigurationTest
+class ProcessRuntimeConfigurationTest
 {
     @TempDir
     Path tempDir;
@@ -77,7 +77,7 @@ class CassandraProcessConfigurationTest
     @Test
     void testValidateStartWithValidConfiguration()
     {
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -91,7 +91,7 @@ class CassandraProcessConfigurationTest
     {
         Path nonExistentHome = tempDir.resolve("nonexistent");
 
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(nonExistentHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -107,7 +107,7 @@ class CassandraProcessConfigurationTest
     {
         Path homeAsFile = Files.createFile(tempDir.resolve("homeAsFile"));
 
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(homeAsFile.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -123,7 +123,7 @@ class CassandraProcessConfigurationTest
     {
         Path nonExistentConfDir = tempDir.resolve("nonexistent-conf");
 
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(nonExistentConfDir.toString())
@@ -139,7 +139,7 @@ class CassandraProcessConfigurationTest
     {
         Files.delete(cassandraYaml);
 
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -155,7 +155,7 @@ class CassandraProcessConfigurationTest
     {
         Files.delete(cassandraBin);
 
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -174,7 +174,7 @@ class CassandraProcessConfigurationTest
         PosixFilePermission.OWNER_WRITE
         ));
 
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -193,7 +193,7 @@ class CassandraProcessConfigurationTest
         PosixFilePermission.OWNER_EXECUTE
         ));
 
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -207,7 +207,7 @@ class CassandraProcessConfigurationTest
     @Test
     void testBuildStartCommand()
     {
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -247,7 +247,7 @@ class CassandraProcessConfigurationTest
     @Test
     void testBuildStartCommandWithoutStorageAndLogDir()
     {
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -282,7 +282,7 @@ class CassandraProcessConfigurationTest
     @Test
     void testBuildStopCommand() throws IOException
     {
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())
@@ -322,7 +322,7 @@ class CassandraProcessConfigurationTest
         "CUSTOM_VAR", "custom_value"
         );
 
-        CassandraProcessConfiguration config = new CassandraProcessConfiguration.Builder()
+        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
                                                .withHost("localhost")
                                                .withCassandraHome(cassandraHome.toString())
                                                .withCassandraConfDir(cassandraConfDir.toString())

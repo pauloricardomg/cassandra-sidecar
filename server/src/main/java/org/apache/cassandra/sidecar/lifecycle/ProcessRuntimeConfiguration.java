@@ -32,7 +32,7 @@ import org.jetbrains.annotations.Nullable;
 /**
  * Represents the configuration for a Cassandra process instance.
  */
-public class CassandraProcessConfiguration
+public class ProcessRuntimeConfiguration
 {
     static class Builder
     {
@@ -86,9 +86,9 @@ public class CassandraProcessConfiguration
             return this;
         }
 
-        public CassandraProcessConfiguration build()
+        public ProcessRuntimeConfiguration build()
         {
-            CassandraProcessConfiguration casCfg = new CassandraProcessConfiguration(host, cassandraHome, cassandraConfDir, cassandraLogDir, storageDir);
+            ProcessRuntimeConfiguration casCfg = new ProcessRuntimeConfiguration(host, cassandraHome, cassandraConfDir, cassandraLogDir, storageDir);
             casCfg.extraEnvVars.putAll(envVars != null ? envVars : Map.of());
             casCfg.extraJvmOpts.putAll(jvmOpts != null ? jvmOpts : Map.of());
             return casCfg;
@@ -108,8 +108,8 @@ public class CassandraProcessConfiguration
     final Map<String, String> extraJvmOpts = new HashMap<>();
     final Map<String, String> extraEnvVars = new HashMap<>();
 
-    private CassandraProcessConfiguration(@NotNull String host, String cassandraHome, String cassandraConfDir,
-                                         @Nullable String cassandraLogDir, @Nullable String storageDir)
+    private ProcessRuntimeConfiguration(@NotNull String host, String cassandraHome, String cassandraConfDir,
+                                        @Nullable String cassandraLogDir, @Nullable String storageDir)
     {
         this.instanceName = host;
         this.cassandraHome = Path.of(cassandraHome);
@@ -253,12 +253,14 @@ public class CassandraProcessConfiguration
 
     public String toString()
     {
-        return "CassandraProcessConfiguration{" +
+        return "ProcessRuntimeConfiguration{" +
                "instanceName='" + instanceName + '\'' +
                ", cassandraHome=" + cassandraHome +
                ", cassandraConfDir=" + cassandraConfDir +
-               ", cassandraLogDir=" + cassandraLogDir +
-               ", storageDir=" + storageDir +
+               ", cassandraLogDir='" + cassandraLogDir + '\'' +
+               ", storageDir='" + storageDir + '\'' +
+               ", extraJvmOpts=" + extraJvmOpts +
+               ", extraEnvVars=" + extraEnvVars +
                '}';
     }
 }

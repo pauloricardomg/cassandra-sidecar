@@ -75,7 +75,7 @@ public class ProcessLifecycleProviderIntegrationTest
     private static Vertx vertx;
     private static WebClient client;
 
-    private static CassandraProcessConfiguration cassandraConfig;
+    private static ProcessRuntimeConfiguration cassandraConfig;
 
     @BeforeAll
     public static void setup() throws IOException, URISyntaxException, ExecutionException, InterruptedException, TimeoutException
@@ -143,7 +143,7 @@ public class ProcessLifecycleProviderIntegrationTest
 
     }
 
-    private static Path createSidecarYaml(CassandraProcessConfiguration cassandraConfig, Path lifecycleDir) throws IOException, URISyntaxException
+    private static Path createSidecarYaml(ProcessRuntimeConfiguration cassandraConfig, Path lifecycleDir) throws IOException, URISyntaxException
     {
         Path sidecarConfDir = Files.createDirectories(tmpDir.resolve("etc/sidecar"));
         URL sidecarYamlTemplateUrl = ProcessLifecycleProviderIntegrationTest.class.getResource("/config/sidecar.yaml.template");
@@ -159,7 +159,7 @@ public class ProcessLifecycleProviderIntegrationTest
         return sidecarYaml;
     }
 
-    public static CassandraProcessConfiguration installCassandra(Path installDir, Path confDir) throws IOException
+    public static ProcessRuntimeConfiguration installCassandra(Path installDir, Path confDir) throws IOException
     {
         if (TARBALL_PATH == null || TARBALL_PATH.isEmpty())
         {
@@ -174,7 +174,7 @@ public class ProcessLifecycleProviderIntegrationTest
         copyDirectoryRecursively(originalCassandraConfDir, confDir);
         Path cassandraStorageDir = Files.createDirectories(tmpDir.resolve("var/lib/cassandra"));
         Path cassandraLogDir = Files.createDirectories(tmpDir.resolve("var/log"));
-        return new CassandraProcessConfiguration.Builder()
+        return new ProcessRuntimeConfiguration.Builder()
                .withHost(TEST_NODE)
                .withCassandraHome(cassandraHome.toString())
                .withCassandraConfDir(confDir.toString())

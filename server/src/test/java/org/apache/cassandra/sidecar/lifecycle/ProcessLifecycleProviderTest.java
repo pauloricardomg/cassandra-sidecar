@@ -58,7 +58,7 @@ public class ProcessLifecycleProviderTest
             super(params);
         }
 
-        protected CassandraProcessConfiguration buildCassandraConfig(InstanceMetadata instance)
+        protected ProcessRuntimeConfiguration getRuntimeConfiguration(InstanceMetadata instance)
         {
             try
             {
@@ -74,7 +74,7 @@ public class ProcessLifecycleProviderTest
                     Files.writeString(pidFile, "12345");
                     return mockProcess;
                 });
-                CassandraProcessConfiguration mockConfig = mock(CassandraProcessConfiguration.class);
+                ProcessRuntimeConfiguration mockConfig = mock(ProcessRuntimeConfiguration.class);
                 when(mockConfig.buildStartCommand(any(), any(), any())).thenReturn(startMock);
 
                 ProcessBuilder stopMock = mock(ProcessBuilder.class);
@@ -170,7 +170,7 @@ public class ProcessLifecycleProviderTest
         );
         when(instance.lifecycleOptions()).thenReturn(lifecycleOptions);
 
-        CassandraProcessConfiguration config = provider.buildCassandraConfig(instance);
+        ProcessRuntimeConfiguration config = provider.getRuntimeConfiguration(instance);
 
         // Verify the configuration was built correctly
         assertThat(config.instanceName()).isEqualTo("localhost");
@@ -202,7 +202,7 @@ public class ProcessLifecycleProviderTest
         );
         when(instance.lifecycleOptions()).thenReturn(lifecycleOptions);
 
-        CassandraProcessConfiguration config = provider.buildCassandraConfig(instance);
+        ProcessRuntimeConfiguration config = provider.getRuntimeConfiguration(instance);
 
         // Verify the configuration uses default Cassandra home
         assertThat(config.cassandraHome()).isEqualTo(Path.of("/default/cassandra/home"));
@@ -243,7 +243,7 @@ public class ProcessLifecycleProviderTest
         when(instance.lifecycleOptions()).thenReturn(lifecycleOptions);
 
         // Build the config and test the start command using provider helper methods
-        CassandraProcessConfiguration testConfig = provider.buildCassandraConfig(instance);
+        ProcessRuntimeConfiguration testConfig = provider.getRuntimeConfiguration(instance);
         String pidFileLocation = provider.getPidFileLocation("testhost");
         String stdoutLocation = provider.getStdoutLocation("testhost");
         String stderrLocation = provider.getStderrLocation("testhost");
@@ -298,7 +298,7 @@ public class ProcessLifecycleProviderTest
         when(instance.lifecycleOptions()).thenReturn(lifecycleOptions);
 
         // Build the config and test the stop command using provider helper methods
-        CassandraProcessConfiguration testConfig = provider.buildCassandraConfig(instance);
+        ProcessRuntimeConfiguration testConfig = provider.getRuntimeConfiguration(instance);
         String pidFileLocation = provider.getPidFileLocation("testhost");
         String stdoutLocation = provider.getStdoutLocation("testhost");
         String stderrLocation = provider.getStderrLocation("testhost");
@@ -358,7 +358,7 @@ public class ProcessLifecycleProviderTest
         when(instance.lifecycleOptions()).thenReturn(lifecycleOptions);
 
         // Build the config and test the start command
-        CassandraProcessConfiguration testConfig = provider.buildCassandraConfig(instance);
+        ProcessRuntimeConfiguration testConfig = provider.getRuntimeConfiguration(instance);
         String pidFileLocation = provider.getPidFileLocation("testhost");
         String stdoutLocation = provider.getStdoutLocation("testhost");
         String stderrLocation = provider.getStderrLocation("testhost");
