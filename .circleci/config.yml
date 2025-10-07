@@ -154,6 +154,8 @@ jobs:
       - checkout
       - attach_workspace:
           at: dtest-jars
+      - attach_workspace:
+          at: cassandra-tarballs
       - run: ./scripts/install-shaded-dtest-jar-local.sh
       - run: ./gradlew --no-daemon -PdtestVersion=4.0.16 -Dcassandra.sidecar.versions_to_test="4.0" integrationTestHeavyWeight --stacktrace
 
@@ -207,6 +209,8 @@ jobs:
       - checkout
       - attach_workspace:
           at: dtest-jars
+      - attach_workspace:
+          at: cassandra-tarballs
       - run: ./scripts/install-shaded-dtest-jar-local.sh
       - run: ./gradlew --no-daemon -PdtestVersion=5.0.3 -Dcassandra.sidecar.versions_to_test="5.0" integrationTestHeavyWeight --stacktrace
 
@@ -260,6 +264,8 @@ jobs:
       - checkout
       - attach_workspace:
           at: dtest-jars
+      - attach_workspace:
+          at: cassandra-tarballs
       - run: ./scripts/install-shaded-dtest-jar-local.sh
       - run: ./gradlew --no-daemon -PdtestVersion=5.1 -Dcassandra.sidecar.versions_to_test="5.1" integrationTestHeavyWeight --stacktrace
 
