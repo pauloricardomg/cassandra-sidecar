@@ -32,13 +32,13 @@ apply from: "${project.rootDir}/gradle/common/java11Options.gradle"
 def getCassandraTarballLocation() {
     def tarballsDirFile = file(tarballsDir)
     if (tarballsDirFile.exists() && tarballsDirFile.isDirectory()) {
-        def filesInDir = fileTree(tarballsDirFile).files.sort { it.name } // Sort by name alphabetically
-        if (!filesInDir.isEmpty()) {
-            def tarballToTest = filesInDir.first()
-            logger.info("Testing with tarball ${tarballToTest}") // TODO: test against multiple versions
+        def matchingFiles = fileTree(tarballsDirFile).files.findAll {it.name ==~ /^apache-cassandra-${tarballVersion}\.?\d*-SNAPSHOT-bin\.tar.gz$/ }
+        if (matchingFiles.size() > 0) {
+            def tarballToTest = matchingFiles.first()
+            println("Testing with tarball ${tarballToTest}")
             return tarballToTest
         } else {
-            logger.warn("WARN: No tarballs found in the directory: ${tarballsDir}. Use script build-dtest-jars.sh to build it.")
+            logger.warn("WARN: No tarballs matching version ${tarballVersion} found in the directory: ${tarballsDir}. Use script build-dtest-jars.sh to build it.")
         }
     } else {
         logger.warn("WARN: Tarballs directory does not exist or is not a directory: ${tarballsDir}. Use script build-dtest-jars.sh to build it.")
