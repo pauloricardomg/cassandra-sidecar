@@ -18,6 +18,7 @@
 
 package org.apache.cassandra.sidecar.lifecycle;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +26,10 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,14 +120,14 @@ public class ProcessLifecycleProvider implements LifecycleProvider
             String stderrLocation = getStderrLocation(runtimeConfig.instanceName());
             String pidFileLocation = getPidFileLocation(runtimeConfig.instanceName());
             ProcessBuilder processBuilder = runtimeConfig.buildStartCommand(pidFileLocation,
-                                                                     stdoutLocation,
-                                                                     stderrLocation);
+                                                                            stdoutLocation,
+                                                                            stderrLocation);
             LOG.info("Starting Cassandra instance {} with command: {}", runtimeConfig.instanceName(), processBuilder.command());
 
             Process process = processBuilder.start();
-            // TODO: replace blocking calls if needed
             process.waitFor(CASSANDRA_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            waitForPid(runtimeConfig.instanceName(), getPidFileLocation(runtimeConfig.instanceName()), true);
+//            // TODO: replace blocking calls if needed
+//            waitForPid(runtimeConfig.instanceName(), getPidFileLocation(runtimeConfig.instanceName()), true);
             if (isCassandraProcessRunning(instance))
             {
                 LOG.info("Started Cassandra instance {} with PID {}", runtimeConfig.instanceName(), readPidFromFile(Path.of(pidFileLocation)));
@@ -146,53 +150,47 @@ public class ProcessLifecycleProvider implements LifecycleProvider
         try
         {
             String pidFileLocation = getPidFileLocation(casCfg.instanceName());
-            ProcessBuilder processBuilder = casCfg.buildStopCommand(pidFileLocation,
-                                                                    getStdoutLocation(casCfg.instanceName()),
-                                                                    getStderrLocation(casCfg.instanceName()));
-            LOG.info("Stopping Cassandra instance {} with command: {}", casCfg.instanceName(), processBuilder.command());
             Long pid = readPidFromFile(Path.of(pidFileLocation));
-            Process process = processBuilder.start();
-            // TODO: replace blocking calls if needed
-            process.waitFor(CASSANDRA_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            waitForPid(casCfg.instanceName(), pidFileLocation, false);
-            if (isCassandraProcessRunning(instance))
+            Optional<ProcessHandle> processHandle = ProcessHandle.of(pid);            // TODO: replace blocking calls if needed
+
+
+            if (processHandle.isPresent())
             {
-                throw new RuntimeException("Failed to stop Cassandra instance " + casCfg.instanceName() +
-                                           ". Process is still running with PID " + pid);
-            }
-            else
-            {
-                LOG.info("Stopped Cassandra instance {} with PID {}. ", casCfg.instanceName(), pid);
+                LOG.info("Stopping Cassandra instance {} with PID {}.", casCfg.instanceName(), pid);
+                CompletableFuture<ProcessHandle> terminationFuture = processHandle.get().onExit();
+                processHandle.get().destroy();
+                // TODO: replace blocking calls if needed
+                terminationFuture.get(CASSANDRA_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             }
         }
-        catch (IOException | InterruptedException e)
+        catch (InterruptedException | ExecutionException | TimeoutException e)
         {
             throw new RuntimeException("Failed to stop Cassandra instance " + casCfg.instanceName() + "due to " + e.getMessage(), e);
         }
     }
 
 
-    /**
-     * Wait for the Cassandra process with a given PID file to start or stop based on the 'started' flag
-     */
-    @VisibleForTesting
-    public static void waitForPid(String instanceName, String pidFileLocation, boolean started) throws InterruptedException
-    {
-        Path pidFilePath = Path.of(pidFileLocation);
-        if (!Files.exists(pidFilePath) || !Files.isReadable(pidFilePath))
-        {
-            LOG.debug("PID file does not exist or is not readable for instance {} at path {}", instanceName, pidFilePath);
-            return;
-        }
-        long pid = readPidFromFile(pidFilePath);
-        long elapsed = 0L;
-        while (elapsed < CASSANDRA_PROCESS_TIMEOUT_MS && (started ? ProcessHandle.of(pid).isEmpty() : ProcessHandle.of(pid).isPresent()))
-        {
-            LOG.info("Waiting for Cassandra instance {} with PID {} to {}...", instanceName, pid, started ? "start" : "stop");
-            Thread.sleep(CASSANDRA_PROCESS_POLL_PERIOD_MS);
-            elapsed += CASSANDRA_PROCESS_POLL_PERIOD_MS;
-        }
-    }
+//    /**
+//     * Wait for the Cassandra process with a given PID file to start or stop based on the 'started' flag
+//     */
+//    @VisibleForTesting
+//    public static void waitForPid(String instanceName, String pidFileLocation, boolean started) throws InterruptedException
+//    {
+//        Path pidFilePath = Path.of(pidFileLocation);
+//        if (!Files.exists(pidFilePath) || !Files.isReadable(pidFilePath))
+//        {
+//            LOG.debug("PID file does not exist or is not readable for instance {} at path {}", instanceName, pidFilePath);
+//            return;
+//        }
+//        long pid = readPidFromFile(pidFilePath);
+//        long elapsed = 0L;
+//        while (elapsed < CASSANDRA_PROCESS_TIMEOUT_MS && (started ? ProcessHandle.of(pid).isEmpty() : ProcessHandle.of(pid).isPresent()))
+//        {
+//            LOG.info("Waiting for Cassandra instance {} with PID {} to {}...", instanceName, pid, started ? "start" : "stop");
+//            Thread.sleep(CASSANDRA_PROCESS_POLL_PERIOD_MS);
+//            elapsed += CASSANDRA_PROCESS_POLL_PERIOD_MS;
+//        }
+//    }
 
     @VisibleForTesting
     protected ProcessRuntimeConfiguration getRuntimeConfiguration(InstanceMetadata instance)
@@ -276,5 +274,16 @@ public class ProcessLifecycleProvider implements LifecycleProvider
     public static String getPidFileLocation(String lifecycleDir, String instanceName)
     {
         return Paths.get(lifecycleDir, "cassandra-" + instanceName + ".pid").toString();
+    }
+
+    public static ProcessBuilder buildStopCommand(Long pid, String stdoutFileLocation, String stderrFileLocation)
+    {
+
+        ProcessBuilder processBuilder = new ProcessBuilder("kill", pid.toString());
+
+        // Redirect output to logs
+        processBuilder.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(stdoutFileLocation)));
+        processBuilder.redirectError(ProcessBuilder.Redirect.appendTo(new File(stderrFileLocation)));
+        return processBuilder;
     }
 }

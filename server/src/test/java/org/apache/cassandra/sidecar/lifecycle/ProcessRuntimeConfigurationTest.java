@@ -45,7 +45,6 @@ class ProcessRuntimeConfigurationTest
     private Path cassandraHome;
     private Path cassandraConfDir;
     private Path cassandraBin;
-    private Path stopServerBin;
     private Path cassandraYaml;
 
     @BeforeEach
@@ -58,13 +57,6 @@ class ProcessRuntimeConfigurationTest
         Path binDir = Files.createDirectories(cassandraHome.resolve("bin"));
         cassandraBin = Files.createFile(binDir.resolve("cassandra"));
         Files.setPosixFilePermissions(cassandraBin, Set.of(
-        PosixFilePermission.OWNER_READ,
-        PosixFilePermission.OWNER_WRITE,
-        PosixFilePermission.OWNER_EXECUTE
-        ));
-        // Create stop-server executable
-        stopServerBin = Files.createFile(binDir.resolve("stop-server"));
-        Files.setPosixFilePermissions(stopServerBin, Set.of(
         PosixFilePermission.OWNER_READ,
         PosixFilePermission.OWNER_WRITE,
         PosixFilePermission.OWNER_EXECUTE
@@ -270,36 +262,6 @@ class ProcessRuntimeConfigurationTest
         Map<String, String> env = pb.environment();
         assertThat(env.get("CASSANDRA_HOME")).isEqualTo(cassandraHome.toString());
         assertThat(env.get("CASSANDRA_CONF")).isEqualTo(cassandraConfDir.toString());
-
-        // Verify working directory
-        assertThat(pb.directory()).isEqualTo(cassandraHome.toFile());
-
-        // Verify redirects are configured
-        assertThat(pb.redirectOutput().type()).isEqualTo(ProcessBuilder.Redirect.Type.APPEND);
-        assertThat(pb.redirectError().type()).isEqualTo(ProcessBuilder.Redirect.Type.APPEND);
-    }
-
-    @Test
-    void testBuildStopCommand() throws IOException
-    {
-        ProcessRuntimeConfiguration config = new ProcessRuntimeConfiguration.Builder()
-                                               .withHost("localhost")
-                                               .withCassandraHome(cassandraHome.toString())
-                                               .withCassandraConfDir(cassandraConfDir.toString())
-                                               .build();
-
-        String pidFile = "/tmp/cassandra.pid";
-        String stdoutFile = "/tmp/cassandra.out";
-        String stderrFile = "/tmp/cassandra.err";
-
-        ProcessBuilder pb = config.buildStopCommand(pidFile, stdoutFile, stderrFile);
-
-        // Verify command
-        List<String> command = pb.command();
-        assertThat(command).hasSize(3);
-        assertThat(command.get(0)).isEqualTo(stopServerBin.toString());
-        assertThat(command.get(1)).isEqualTo("-p");
-        assertThat(command.get(2)).isEqualTo(pidFile);
 
         // Verify working directory
         assertThat(pb.directory()).isEqualTo(cassandraHome.toFile());

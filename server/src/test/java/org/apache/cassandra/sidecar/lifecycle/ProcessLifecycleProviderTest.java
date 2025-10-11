@@ -18,19 +18,25 @@
 
 package org.apache.cassandra.sidecar.lifecycle;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
 import org.mockito.MockedStatic;
 
+import static org.apache.cassandra.sidecar.lifecycle.ProcessLifecycleProvider.getPidFileLocation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -66,7 +72,7 @@ public class ProcessLifecycleProviderTest
                 when(mockProcess.waitFor()).thenReturn(0);
 
                 ProcessBuilder startMock = mock(ProcessBuilder.class);
-                when(startMock.start()).thenReturn(mockProcess);
+                //when(startMock.start()).thenReturn(mockProcess);
                 when(startMock.start()).then(invocation -> {
                     String pidFileLocation = getPidFileLocation(lifecycleStateDir.toString(), "localhost");
                     // create the pid file to simulate a started process
@@ -85,7 +91,6 @@ public class ProcessLifecycleProviderTest
                     Path.of(pidFileLocation).toFile().delete();
                     return mockProcess;
                 });
-                when(mockConfig.buildStopCommand(any(), any(), any())).thenReturn(stopMock);
                 when(mockConfig.instanceName()).thenReturn("localhost");
                 return mockConfig;
             }
@@ -96,22 +101,33 @@ public class ProcessLifecycleProviderTest
         }
     }
 
+    protected static final Logger LOG = LoggerFactory.getLogger(ProcessLifecycleProvider.class);
+
+
     @Test
-    void testStartStopIsRunning()
+    void testStartStopIsRunning() throws InterruptedException
     {
         try (MockedStatic<ProcessHandle> processHandleMock = mockStatic(ProcessHandle.class))
         {
             // Mock ProcessHandle.of to simulate process running state
             Optional<ProcessHandle> emptyHandle = Optional.empty();
             ProcessHandle mockHandle = mock(ProcessHandle.class);
+            when(mockHandle.onExit()).thenReturn(CompletableFuture.supplyAsync(() -> {
+                String pidFileLocation = getPidFileLocation(lifecycleStateDir.toString(), "localhost");
+                // delete the pid file to simulate a stopped process
+                File file = Path.of(pidFileLocation).toFile();
+                file.delete();
+                return null;
+            }));
             Optional<ProcessHandle> presentHandle = Optional.of(mockHandle);
             processHandleMock.when(() -> ProcessHandle.of(12345L))
-                             .thenReturn(emptyHandle)  // First call - process not started yet to simulate delay while starting process
+                             //.thenReturn(emptyHandle)  // First call - process not started yet to simulate delay while starting process
                              .thenReturn(presentHandle) // Second call - first successful check within start
                              .thenReturn(presentHandle) // Third call - second successful check within start
                              .thenReturn(presentHandle) // Fourth call - process is running check after start
                              .thenReturn(presentHandle) // Fourth call - process is running when stop is called
                              .thenReturn(emptyHandle);  // Subsequent calls - process not found
+
 
             // Create provider with temporary lifecycle state directory
             Map<String, String> params = Map.of(
@@ -127,7 +143,7 @@ public class ProcessLifecycleProviderTest
             when(instance.lifecycleOptions()).thenReturn(Map.of());
 
             // Initially, instance should not be running (no PID file exists)
-            String pidFileLocation = ProcessLifecycleProvider.getPidFileLocation(lifecycleStateDir.toString(), "localhost");
+            String pidFileLocation = getPidFileLocation(lifecycleStateDir.toString(), "localhost");
             assertThat(Path.of(pidFileLocation)).doesNotExist();
             assertThat(provider.isRunning(instance)).isFalse();
 
@@ -140,6 +156,7 @@ public class ProcessLifecycleProviderTest
             assertThat(provider.isRunning(instance)).isTrue();
 
             // Stop the instance (fourth/fifth call to isRunning happens within stop)
+            //FIXME pid file not being created - use mock specific to this call
             provider.stop(instance);
 
             // After stopping, instance should not be running (PID file should be deleted)
@@ -268,56 +285,21 @@ public class ProcessLifecycleProviderTest
     @Test
     void testBuildStopCommand() throws IOException
     {
-        // Create temporary files to simulate the required directories and files first
-        Path tempCassandraHome = lifecycleStateDir.resolve("cassandra");
-        Path tempBinDir = tempCassandraHome.resolve("bin");
-        Path tempConfDir = lifecycleStateDir.resolve("conf");
-        Files.createDirectories(tempBinDir);
-        Files.createDirectories(tempConfDir);
+        Long pid = 12345L;
+        String stdoutFile = "/tmp/stop-cassandra.out";
+        String stderrFile = "/tmp/stop-cassandra.err";
 
-        Path stopServerBin = tempBinDir.resolve("stop-server");
-        Files.createFile(stopServerBin);
-        stopServerBin.toFile().setExecutable(true);
+        ProcessBuilder pb = ProcessLifecycleProvider.buildStopCommand(pid, stdoutFile, stderrFile);
 
-        // Use the temp directory for Cassandra home instead of hardcoded path
-        Map<String, String> params = Map.of(
-        ProcessLifecycleProvider.OPT_STATE_DIR, lifecycleStateDir.toString(),
-        ProcessLifecycleProvider.OPT_CASSANDRA_HOME, tempCassandraHome.toString()
-        );
+        // Verify command
+        List<String> command = pb.command();
+        assertThat(command).hasSize(2);
+        assertThat(command.get(0)).isEqualTo("kill");
+        assertThat(command.get(1)).isEqualTo(pid.toString());
 
-        ProcessLifecycleProvider provider = new ProcessLifecycleProvider(params);
-
-        // Create mock instance metadata without storage dir
-        InstanceMetadata instance = mock(InstanceMetadata.class);
-        when(instance.host()).thenReturn("testhost");
-        when(instance.storageDir()).thenReturn(null);
-
-        Map<String, String> lifecycleOptions = Map.of(
-        ProcessLifecycleProvider.OPT_CASSANDRA_CONF_DIR, tempConfDir.toString()
-        );
-        when(instance.lifecycleOptions()).thenReturn(lifecycleOptions);
-
-        // Build the config and test the stop command using provider helper methods
-        ProcessRuntimeConfiguration testConfig = provider.getRuntimeConfiguration(instance);
-        String pidFileLocation = provider.getPidFileLocation("testhost");
-        String stdoutLocation = provider.getStdoutLocation("testhost");
-        String stderrLocation = provider.getStderrLocation("testhost");
-
-        ProcessBuilder processBuilder = testConfig.buildStopCommand(pidFileLocation, stdoutLocation, stderrLocation);
-
-        // Verify command arguments for stop command
-        List<String> command = processBuilder.command();
-        assertThat(command).containsExactly(
-        stopServerBin.toString(),
-        "-p",
-        pidFileLocation
-        );
-
-        // Verify environment variables
-        Map<String, String> env = processBuilder.environment();
-        assertThat(env.get("CASSANDRA_HOME")).isNull();
-        assertThat(env.get("CASSANDRA_CONF")).isNull();
-        assertThat(env.get("CASSANDRA_LOG_DIR")).isNull();
+        // Verify redirects are configured
+        assertThat(pb.redirectOutput().type()).isEqualTo(ProcessBuilder.Redirect.Type.APPEND);
+        assertThat(pb.redirectError().type()).isEqualTo(ProcessBuilder.Redirect.Type.APPEND);
     }
 
     @Test

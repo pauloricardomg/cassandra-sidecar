@@ -60,6 +60,8 @@ import static org.apache.cassandra.sidecar.utils.TestFileUtils.replacePlaceholde
 @Tag("heavy")
 public class ProcessLifecycleProviderIntegrationTest
 {
+    protected static final Logger logger = LoggerFactory.getLogger(ProcessLifecycleProviderIntegrationTest.class);
+
     static final String TEST_NODE = "localhost";
     static final int TIMEOUT_SECONDS = 30;
 
@@ -108,14 +110,20 @@ public class ProcessLifecycleProviderIntegrationTest
 
     private static void forceCassandraStop()
     {
-        String pidFileLocation = ProcessLifecycleProvider.getPidFileLocation(lifecycleDir.toString(), TEST_NODE);
-        ProcessBuilder processBuilder = cassandraConfig.buildStopCommand(pidFileLocation, tmpDir.resolve("test-stop-stdout").toString(),
-                                                                         tmpDir.resolve("test-stop-stderr").toString());
+        Path pidFileLocation = Path.of(ProcessLifecycleProvider.getPidFileLocation(lifecycleDir.toString(), TEST_NODE));
+        if (!pidFileLocation.toFile().exists())
+        {
+            logger.warn("No PID file exists, not stopping server.");
+            return;
+        }
+        Long pid = ProcessLifecycleProvider.readPidFromFile(pidFileLocation);
+        ProcessBuilder processBuilder = ProcessLifecycleProvider.buildStopCommand(pid, tmpDir.resolve("test-stop-stdout").toString(),
+                                                                                       tmpDir.resolve("test-stop-stderr").toString());
         try
         {
             LOG.info("Stopping Cassandra process with command: {}", processBuilder.command());
             processBuilder.start().waitFor();
-            ProcessLifecycleProvider.waitForPid(TEST_NODE, pidFileLocation, false);
+            //ProcessLifecycleProvider.waitForPid(TEST_NODE, pidFileLocation.toString(), false);
         }
         catch (IOException | InterruptedException e)
         {

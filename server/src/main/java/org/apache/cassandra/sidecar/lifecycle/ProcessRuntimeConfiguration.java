@@ -178,20 +178,6 @@ public class ProcessRuntimeConfiguration
         }
     }
 
-    public void validateStop() throws IllegalArgumentException
-    {
-        // Check existence
-        if (!Files.isRegularFile(stopServerBin()))
-        {
-            throw new IllegalArgumentException("Stop server script does not exist or is not a regular file: " + stopServerBin());
-        }
-        // Check permissions
-        if (!Files.isExecutable(stopServerBin()))
-        {
-            throw new IllegalArgumentException("Stop server script is not executable: " + stopServerBin());
-        }
-    }
-
     public ProcessBuilder buildStartCommand(String pidFileLocation, String stdoutFileLocation, String stderrFileLocation)
     {
         validateStart();
@@ -233,21 +219,6 @@ public class ProcessRuntimeConfiguration
 
         // Set working directory
         processBuilder.directory(cassandraHome().toFile());
-        return processBuilder;
-    }
-
-    public ProcessBuilder buildStopCommand(String pidFileLocation, String stdoutFileLocation, String stderrFileLocation)
-    {
-        validateStop();
-
-        ProcessBuilder processBuilder = new ProcessBuilder(stopServerBin().toString(), "-p", pidFileLocation);
-
-        // Set working directory
-        processBuilder.directory(cassandraHome.toFile());
-
-        // Redirect output to logs
-        processBuilder.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(stdoutFileLocation)));
-        processBuilder.redirectError(ProcessBuilder.Redirect.appendTo(new File(stderrFileLocation)));
         return processBuilder;
     }
 
