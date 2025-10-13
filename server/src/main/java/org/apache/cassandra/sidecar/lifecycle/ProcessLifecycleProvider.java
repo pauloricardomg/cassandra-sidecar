@@ -50,7 +50,7 @@ public class ProcessLifecycleProvider implements LifecycleProvider
 
     protected static final Logger LOG = LoggerFactory.getLogger(ProcessLifecycleProvider.class);
     private static final long CASSANDRA_PROCESS_POLL_PERIOD_MS = Long.getLong("cassandra.sidecar.lifecycle.process.poll.period.ms", 5_000L);
-    private static final long CASSANDRA_PROCESS_TIMEOUT_MS = Long.getLong("cassandra.sidecar.lifecycle.process.timeout.ms", 120_000L);
+    public static final long CASSANDRA_PROCESS_TIMEOUT_MS = Long.getLong("cassandra.sidecar.lifecycle.process.timeout.ms", 120_000L);
 
     private final String lifecycleDir;
     private final String defaultCassandraHome;
@@ -125,9 +125,8 @@ public class ProcessLifecycleProvider implements LifecycleProvider
             LOG.info("Starting Cassandra instance {} with command: {}", runtimeConfig.instanceName(), processBuilder.command());
 
             Process process = processBuilder.start();
-            process.waitFor(CASSANDRA_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-//            // TODO: replace blocking calls if needed
-//            waitForPid(runtimeConfig.instanceName(), getPidFileLocation(runtimeConfig.instanceName()), true);
+            process.waitFor(CASSANDRA_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS); // blocking call, make async?
+
             if (isCassandraProcessRunning(instance))
             {
                 LOG.info("Started Cassandra instance {} with PID {}", runtimeConfig.instanceName(), readPidFromFile(Path.of(pidFileLocation)));
@@ -138,9 +137,9 @@ public class ProcessLifecycleProvider implements LifecycleProvider
                                            ". Check stdout at " + stdoutLocation + " and stderr at " + stderrLocation);
             }
         }
-        catch (IOException | InterruptedException e)
+        catch (Throwable t)
         {
-            throw new RuntimeException("Failed to start Cassandra instance " + runtimeConfig.instanceName() + " due to " + e.getMessage(), e);
+            throw new RuntimeException("Failed to start Cassandra instance " + runtimeConfig.instanceName() + " due to " + t.getMessage(), t);
         }
     }
 
@@ -151,46 +150,24 @@ public class ProcessLifecycleProvider implements LifecycleProvider
         {
             String pidFileLocation = getPidFileLocation(casCfg.instanceName());
             Long pid = readPidFromFile(Path.of(pidFileLocation));
-            Optional<ProcessHandle> processHandle = ProcessHandle.of(pid);            // TODO: replace blocking calls if needed
-
-
+            Optional<ProcessHandle> processHandle = ProcessHandle.of(pid);
             if (processHandle.isPresent())
             {
-                LOG.info("Stopping Cassandra instance {} with PID {}.", casCfg.instanceName(), pid);
+                LOG.info("Stopping process of Cassandra instance {} with PID {}.", casCfg.instanceName(), pid);
                 CompletableFuture<ProcessHandle> terminationFuture = processHandle.get().onExit();
-                processHandle.get().destroy();
-                // TODO: replace blocking calls if needed
+                processHandle.get().destroy();  // blocking call, make async?
                 terminationFuture.get(CASSANDRA_PROCESS_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             }
+            else
+            {
+                LOG.warn("No process running for Cassandra instance {} with PID {}.", casCfg.instanceName, pid);
+            }
         }
-        catch (InterruptedException | ExecutionException | TimeoutException e)
+        catch (Throwable t)
         {
-            throw new RuntimeException("Failed to stop Cassandra instance " + casCfg.instanceName() + "due to " + e.getMessage(), e);
+            throw new RuntimeException("Failed to stop process for Cassandra instance " + casCfg.instanceName() + " due to " + t.getMessage(), t);
         }
     }
-
-
-//    /**
-//     * Wait for the Cassandra process with a given PID file to start or stop based on the 'started' flag
-//     */
-//    @VisibleForTesting
-//    public static void waitForPid(String instanceName, String pidFileLocation, boolean started) throws InterruptedException
-//    {
-//        Path pidFilePath = Path.of(pidFileLocation);
-//        if (!Files.exists(pidFilePath) || !Files.isReadable(pidFilePath))
-//        {
-//            LOG.debug("PID file does not exist or is not readable for instance {} at path {}", instanceName, pidFilePath);
-//            return;
-//        }
-//        long pid = readPidFromFile(pidFilePath);
-//        long elapsed = 0L;
-//        while (elapsed < CASSANDRA_PROCESS_TIMEOUT_MS && (started ? ProcessHandle.of(pid).isEmpty() : ProcessHandle.of(pid).isPresent()))
-//        {
-//            LOG.info("Waiting for Cassandra instance {} with PID {} to {}...", instanceName, pid, started ? "start" : "stop");
-//            Thread.sleep(CASSANDRA_PROCESS_POLL_PERIOD_MS);
-//            elapsed += CASSANDRA_PROCESS_POLL_PERIOD_MS;
-//        }
-//    }
 
     @VisibleForTesting
     protected ProcessRuntimeConfiguration getRuntimeConfiguration(InstanceMetadata instance)
@@ -210,7 +187,7 @@ public class ProcessLifecycleProvider implements LifecycleProvider
                                         .build();
     }
 
-    public boolean isCassandraProcessRunning(InstanceMetadata instance)
+    private boolean isCassandraProcessRunning(InstanceMetadata instance)
     {
         Path pidFilePath = Path.of(getPidFileLocation(instance.host()));
         if (!Files.isRegularFile(pidFilePath) || !Files.isReadable(pidFilePath))
@@ -239,8 +216,6 @@ public class ProcessLifecycleProvider implements LifecycleProvider
             return false;
         }
     }
-
-
 
     public static Long readPidFromFile(Path pidFilePath)
     {
@@ -274,16 +249,5 @@ public class ProcessLifecycleProvider implements LifecycleProvider
     public static String getPidFileLocation(String lifecycleDir, String instanceName)
     {
         return Paths.get(lifecycleDir, "cassandra-" + instanceName + ".pid").toString();
-    }
-
-    public static ProcessBuilder buildStopCommand(Long pid, String stdoutFileLocation, String stderrFileLocation)
-    {
-
-        ProcessBuilder processBuilder = new ProcessBuilder("kill", pid.toString());
-
-        // Redirect output to logs
-        processBuilder.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(stdoutFileLocation)));
-        processBuilder.redirectError(ProcessBuilder.Redirect.appendTo(new File(stderrFileLocation)));
-        return processBuilder;
     }
 }

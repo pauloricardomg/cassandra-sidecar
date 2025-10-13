@@ -72,7 +72,6 @@ public class ProcessLifecycleProviderTest
                 when(mockProcess.waitFor()).thenReturn(0);
 
                 ProcessBuilder startMock = mock(ProcessBuilder.class);
-                //when(startMock.start()).thenReturn(mockProcess);
                 when(startMock.start()).then(invocation -> {
                     String pidFileLocation = getPidFileLocation(lifecycleStateDir.toString(), "localhost");
                     // create the pid file to simulate a started process
@@ -82,15 +81,6 @@ public class ProcessLifecycleProviderTest
                 });
                 ProcessRuntimeConfiguration mockConfig = mock(ProcessRuntimeConfiguration.class);
                 when(mockConfig.buildStartCommand(any(), any(), any())).thenReturn(startMock);
-
-                ProcessBuilder stopMock = mock(ProcessBuilder.class);
-                when(stopMock.start()).thenReturn(mockProcess);
-                when(stopMock.start()).then(invocation -> {
-                    String pidFileLocation = getPidFileLocation(lifecycleStateDir.toString(), "localhost");
-                    // delete the pid file to simulate a stopped process
-                    Path.of(pidFileLocation).toFile().delete();
-                    return mockProcess;
-                });
                 when(mockConfig.instanceName()).thenReturn("localhost");
                 return mockConfig;
             }
@@ -101,18 +91,14 @@ public class ProcessLifecycleProviderTest
         }
     }
 
-    protected static final Logger LOG = LoggerFactory.getLogger(ProcessLifecycleProvider.class);
-
-
     @Test
     void testStartStopIsRunning() throws InterruptedException
     {
         try (MockedStatic<ProcessHandle> processHandleMock = mockStatic(ProcessHandle.class))
         {
             // Mock ProcessHandle.of to simulate process running state
-            Optional<ProcessHandle> emptyHandle = Optional.empty();
             ProcessHandle mockHandle = mock(ProcessHandle.class);
-            when(mockHandle.onExit()).thenReturn(CompletableFuture.supplyAsync(() -> {
+            when(mockHandle.onExit()).then(i -> CompletableFuture.supplyAsync(() -> {
                 String pidFileLocation = getPidFileLocation(lifecycleStateDir.toString(), "localhost");
                 // delete the pid file to simulate a stopped process
                 File file = Path.of(pidFileLocation).toFile();
@@ -121,13 +107,7 @@ public class ProcessLifecycleProviderTest
             }));
             Optional<ProcessHandle> presentHandle = Optional.of(mockHandle);
             processHandleMock.when(() -> ProcessHandle.of(12345L))
-                             //.thenReturn(emptyHandle)  // First call - process not started yet to simulate delay while starting process
-                             .thenReturn(presentHandle) // Second call - first successful check within start
-                             .thenReturn(presentHandle) // Third call - second successful check within start
-                             .thenReturn(presentHandle) // Fourth call - process is running check after start
-                             .thenReturn(presentHandle) // Fourth call - process is running when stop is called
-                             .thenReturn(emptyHandle);  // Subsequent calls - process not found
-
+                             .thenReturn(presentHandle);
 
             // Create provider with temporary lifecycle state directory
             Map<String, String> params = Map.of(
@@ -144,23 +124,22 @@ public class ProcessLifecycleProviderTest
 
             // Initially, instance should not be running (no PID file exists)
             String pidFileLocation = getPidFileLocation(lifecycleStateDir.toString(), "localhost");
-            assertThat(Path.of(pidFileLocation)).doesNotExist();
+            Path pidFilePath = Path.of(pidFileLocation);
+            assertThat(pidFilePath).doesNotExist();
             assertThat(provider.isRunning(instance)).isFalse();
 
-            // Start the instance (first/second/third calls to isRunning happen within start)
+            // Start the instance
             provider.start(instance);
 
             // After starting, instance should be running (PID file should exist)
-            assertThat(Path.of(pidFileLocation)).exists();
-            // Fourth call to isRunning should return true
+            assertThat(pidFilePath).exists();
             assertThat(provider.isRunning(instance)).isTrue();
 
-            // Stop the instance (fourth/fifth call to isRunning happens within stop)
-            //FIXME pid file not being created - use mock specific to this call
+            // Stop the instance
             provider.stop(instance);
 
             // After stopping, instance should not be running (PID file should be deleted)
-            assertThat(Path.of(pidFileLocation)).doesNotExist();
+            assertThat(pidFilePath).doesNotExist();
             assertThat(provider.isRunning(instance)).isFalse();
         }
     }
@@ -280,26 +259,6 @@ public class ProcessLifecycleProviderTest
         assertThat(env.get("CASSANDRA_HOME")).isEqualTo(tempCassandraHome.toString());
         assertThat(env.get("CASSANDRA_CONF")).isEqualTo(tempConfDir.toString());
         assertThat(env.get("CASSANDRA_LOG_DIR")).isNull();
-    }
-
-    @Test
-    void testBuildStopCommand() throws IOException
-    {
-        Long pid = 12345L;
-        String stdoutFile = "/tmp/stop-cassandra.out";
-        String stderrFile = "/tmp/stop-cassandra.err";
-
-        ProcessBuilder pb = ProcessLifecycleProvider.buildStopCommand(pid, stdoutFile, stderrFile);
-
-        // Verify command
-        List<String> command = pb.command();
-        assertThat(command).hasSize(2);
-        assertThat(command.get(0)).isEqualTo("kill");
-        assertThat(command.get(1)).isEqualTo(pid.toString());
-
-        // Verify redirects are configured
-        assertThat(pb.redirectOutput().type()).isEqualTo(ProcessBuilder.Redirect.Type.APPEND);
-        assertThat(pb.redirectError().type()).isEqualTo(ProcessBuilder.Redirect.Type.APPEND);
     }
 
     @Test

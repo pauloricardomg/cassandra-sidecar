@@ -27,6 +27,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 
@@ -113,22 +115,25 @@ public class ProcessLifecycleProviderIntegrationTest
         Path pidFileLocation = Path.of(ProcessLifecycleProvider.getPidFileLocation(lifecycleDir.toString(), TEST_NODE));
         if (!pidFileLocation.toFile().exists())
         {
-            logger.warn("No PID file exists, not stopping server.");
+            logger.info("No PID file exists, Cassandra already stopped.");
             return;
         }
         Long pid = ProcessLifecycleProvider.readPidFromFile(pidFileLocation);
-        ProcessBuilder processBuilder = ProcessLifecycleProvider.buildStopCommand(pid, tmpDir.resolve("test-stop-stdout").toString(),
-                                                                                       tmpDir.resolve("test-stop-stderr").toString());
         try
         {
-            LOG.info("Stopping Cassandra process with command: {}", processBuilder.command());
-            processBuilder.start().waitFor();
-            //ProcessLifecycleProvider.waitForPid(TEST_NODE, pidFileLocation.toString(), false);
+            Optional<ProcessHandle> processHandle = ProcessHandle.of(pid);
+            if (processHandle.isPresent())
+            {
+                LOG.info("Killing Cassandra process with PID {}", pid);
+                CompletableFuture<ProcessHandle> terminationFuture = processHandle.get().onExit();
+                processHandle.get().destroyForcibly();
+                terminationFuture.get(TIMEOUT_SECONDS, SECONDS);
+            }
         }
-        catch (IOException | InterruptedException e)
+        catch (InterruptedException | ExecutionException | TimeoutException e)
         {
-            LOG.error("Failed to stop Cassandra process", e);
-            throw new RuntimeException("Failed to stop Cassandra process", e);
+            LOG.error("Failed to kill Cassandra process with PID {}", pid, e);
+            throw new RuntimeException("Failed to kill Cassandra process", e);
         }
     }
 
