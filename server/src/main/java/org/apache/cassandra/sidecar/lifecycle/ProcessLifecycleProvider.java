@@ -18,7 +18,6 @@
 
 package org.apache.cassandra.sidecar.lifecycle;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,9 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +46,6 @@ public class ProcessLifecycleProvider implements LifecycleProvider
     static final String OPT_STATE_DIR = "state_dir";
 
     protected static final Logger LOG = LoggerFactory.getLogger(ProcessLifecycleProvider.class);
-    private static final long CASSANDRA_PROCESS_POLL_PERIOD_MS = Long.getLong("cassandra.sidecar.lifecycle.process.poll.period.ms", 5_000L);
     public static final long CASSANDRA_PROCESS_TIMEOUT_MS = Long.getLong("cassandra.sidecar.lifecycle.process.timeout.ms", 120_000L);
 
     private final String lifecycleDir;

@@ -30,9 +30,6 @@ import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
 import org.mockito.MockedStatic;
 

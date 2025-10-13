@@ -62,8 +62,6 @@ import static org.apache.cassandra.sidecar.utils.TestFileUtils.replacePlaceholde
 @Tag("heavy")
 public class ProcessLifecycleProviderIntegrationTest
 {
-    protected static final Logger logger = LoggerFactory.getLogger(ProcessLifecycleProviderIntegrationTest.class);
-
     static final String TEST_NODE = "localhost";
     static final int TIMEOUT_SECONDS = 30;
 
@@ -115,7 +113,7 @@ public class ProcessLifecycleProviderIntegrationTest
         Path pidFileLocation = Path.of(ProcessLifecycleProvider.getPidFileLocation(lifecycleDir.toString(), TEST_NODE));
         if (!pidFileLocation.toFile().exists())
         {
-            logger.info("No PID file exists, Cassandra already stopped.");
+            LOG.info("No PID file exists, Cassandra already stopped.");
             return;
         }
         Long pid = ProcessLifecycleProvider.readPidFromFile(pidFileLocation);
