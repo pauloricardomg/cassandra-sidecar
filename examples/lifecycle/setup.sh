@@ -22,7 +22,7 @@ SCRIPT_DIR=$(realpath "$(dirname "$0")")
 VERSION=4.1.9
 CASSANDRA_DIR="apache-cassandra-${VERSION}"
 TARBALL_NAME="${CASSANDRA_DIR}-bin.tar.gz"
-TARBALL_URL="https://dlcdn.apache.org/cassandra/${VERSION}/${TARBALL_NAME}"
+TARBALL_URL="https://archive.apache.org/dist/cassandra/${CASSANDRA_VERSION}/${TARBALL_NAME}"
 NODE_DIR="${SCRIPT_DIR}/nodes/localhost"
 
 SIDECAR_YAML="${SCRIPT_DIR}/conf/sidecar.yaml"
