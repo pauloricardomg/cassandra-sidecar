@@ -1,0 +1,431 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+#
+# Cassandra Sidecar configuration file
+#
+cassandra_instances:
+  - id: 1
+    host: localhost
+    port: 9042
+
+    # The instance's storage directory as defined per the cassandra.storagedir property
+    # which defaults to the $CASSANDRA_HOME/data directory, but can be configured to any
+    # directory. By default, storage directory is the parent directory of data dirs,
+    # commitlog dir, cdc dir, hints dir and saved caches dir. If data_dirs, commitlog_dir,
+    # cdc_dir, hints_dir and saved_caches_dir are configured explicitly, then they will be used.
+    # Otherwise, default paths based on storage directory will be used.
+    storage_dir: $baseDir/var/lib/cassandra
+
+    # List of directories where Cassandra stores data on disk. If not set, the default directory
+    # is <storage_dir>/data
+    #data_dirs:
+    #  - /var/lib/cassandra/data
+
+    # A temporary directory used to stage sstables before importing them into Cassandra.
+    staging_dir: /var/lib/cassandra/sstable-staging
+
+    # Directory where Cassandra stores mutations. If not set, the default directory is
+    # <storage_dir>/cdc_raw.
+    #cdc_dir: /var/lib/cassandra/cdc_raw
+
+    # Directory where Cassandra stores the commit logs. If not set, the default directory
+    # is <storage_dir>/commitlog
+    #commitlog_dir: /var/lib/cassandra/commitlog
+
+    # Directory where Cassandra stores hints. If not set, the default directory is
+    # <storage_dir>/hints.
+    #hints_dir: /var/lib/cassandra/hints
+
+    # Directory where Cassandra stores the saved caches. If not set, the default directory
+    # is <storage_dir>/saved_caches
+    #saved_caches_dir: /var/lib/cassandra/saved_caches
+
+    # Directory where Cassandra stores the data of the local system keyspaces.
+    # By default, Cassandra stores the data of the local system keyspaces in the
+    # first of the data directories specified by data_file_directories.
+    # local_system_data_file_dir:
+
+    jmx_host: 127.0.0.1
+    jmx_port: 7199
+    jmx_ssl_enabled: false
+#    jmx_role:
+#    jmx_role_password:
+    lifecycle_options:
+      cassandra_conf_dir: $baseDir/etc/cassandra
+      cassandra_log_dir: $baseDir/var/log/cassandra
+
+sidecar:
+  host: 0.0.0.0
+  port: 9043
+  request_idle_timeout: 5m
+  request_timeout: 5m
+  tcp_keep_alive: false
+  accept_backlog: 1024
+  server_verticle_instances: 1
+  # DnsResolver to use (org.apache.cassandra.sidecar.common.server.dns.DnsResolver). Currently supported
+  # values are 'default' and 'resolve_to_ip'. Default will resolve hostnames to addresses and addresses to
+  # hostnames whereas resolve_to_ip will only resolve hostnames to addresses.
+  dns_resolver: default
+  throttle:
+    stream_requests_per_sec: 5000
+    timeout: 10s
+  traffic_shaping:
+    inbound_global_bandwidth_bps: 0               # 0 implies unthrottled, the inbound bandwidth in bytes per second
+    outbound_global_bandwidth_bps: 0              # 0 implies unthrottled, the outbound bandwidth in bytes per second
+    peak_outbound_global_bandwidth_bps: 419430400 # the peak outbound bandwidth in bytes per second. The default is 400 mebibytes per second
+    max_delay_to_wait: 15s                        # 15 seconds
+    check_interval_for_stats: 1s                  # 1 second
+    inbound_global_file_bandwidth_bps: 0          # 0 implies unthrottled, the inbound bandwidth allocated for incoming files in bytes per second, upper-bounded by inbound_global_bandwidth_bps
+  sstable_upload:
+    concurrent_upload_limit: 80
+    min_free_space_percent: 10
+    # file_permissions: "rw-r--r--" # when not specified, the default file permissions are owner read & write, group & others read
+  # The maximum allowable time skew between the server and the client.
+  # Resolution is in minutes. The minimum configurable value is 1 minute.
+  allowable_time_skew: 1h
+  sstable_import:
+    execute_interval: 100ms
+    cache:
+      expire_after_access: 2h # 2 hours
+      maximum_size: 10000
+  sstable_snapshot:
+    snapshot_list_cache:
+      expire_after_access: 2h # 2 hours
+      maximum_size: 10000
+  cdc:
+    segment_hardlink_cache_expiry: 5m # 5 minutes
+  worker_pools:
+    service:
+      name: "sidecar-worker-pool"
+      size: 20
+      max_execution_time: 1m # 1 minute
+    internal:
+      name: "sidecar-internal-worker-pool"
+      size: 20
+      max_execution_time: 15m # 15 minutes
+  jmx:
+    max_retries: 3
+    retry_delay: 200ms
+  schema:
+    is_enabled: false
+    keyspace: sidecar_internal
+    replication_strategy: SimpleStrategy
+    replication_factor: 1
+    # The TTL in seconds used to insert entries into the sidecar_lease schema
+    lease_schema_ttl: 5m
+  coordination:
+    # Captures configuration parameters for the task that performs the cluster lease claim process
+    cluster_lease_claim:
+      # The name of the strategy used to determine the electorate membership (defaults to MostReplicatedKeyspaceTokenZeroElectorateMembership)
+      # Out of the box Sidecar provides the MostReplicatedKeyspaceTokenZeroElectorateMembership, and
+      # SidecarInternalTokenZeroElectorateMembership implementations.
+      # - MostReplicatedKeyspaceTokenZeroElectorateMembership the current Sidecar will be determined to be part
+      #                                                       of the electorate iff one of the Cassandra instances it
+      #                                                       manages owns token 0 for the user keyspace that has the
+      #                                                       highest replication factor. If multiple keyspaces have
+      #                                                       the highest replication factor, the keyspace to be used
+      #                                                       is decided by the keyspace with the name that sorts
+      #                                                       first in the lexicographic sort order. If no user
+      #                                                       keyspaces are created, the internal sidecar keyspace will
+      #                                                       be used.
+      # - SidecarInternalTokenZeroElectorateMembership        the current Sidecar will be determined to be part of the
+      #                                                       electorate iff one of the Cassandra instances it manages
+      #                                                       owns token {@code 0} for the {@code sidecar_internal}
+      #                                                       keyspace.
+      electorate_membership_strategy: MostReplicatedKeyspaceTokenZeroElectorateMembership
+      # Whether the process is enabled
+      enabled: true
+      # The initial delay for the first execution of the cluster lease claim process task after being
+      # scheduled or rescheduled.
+      # The minimum value for the initial delay is 0ms.
+      initial_delay: 1s
+      # A random delta value to add jitter to the initial delay for the first execution of the cluster
+      # lease claim process. The actual initial delay for the task will be a millisecond value of the
+      # initial_delay + RANDOM(initial_delay_random_delta) configuration.
+      # The minimum value for the initial delay random delta is 0ms, which in practice disables the jitter.
+      initial_delay_random_delta: 30s
+      # How often the cluster lease claim process task will execute after the previous task has completed
+      # the execution.
+      # The minimum value allowed for the cluster lease claim process task implementation is 30 seconds
+      execute_interval: 100s
+
+# Exposes vertx configurations
+vertx:
+  # Configuration options for the vertx filesystem
+  # These options will affect the behavior when serving static resources from the
+  # classpath. For example, setting classpath_resolving_enabled to false will cause
+  # the static file resolution to only look for files in the filesystem and avoid
+  # resolving resources from the classpath.
+  filesystem_options:
+    # When vert.x cannot find the file on the filesystem it tries to resolve the
+    # file from the classpath when this is set to true. Otherwise, vert.x
+    # will not attempt to resolve the file on the classpath
+    classpath_resolving_enabled: true
+    # Set to true to enable caching files on the real file system
+    # when the filesystem performs class path resolving. Set to false to
+    # disable caching.
+    file_caching_enabled: true
+    # When vert.x reads a file that is packaged with the application it gets
+    # extracted to this directory first and subsequent reads will use the extracted
+    # file to get better IO performance.
+    #file_cache_dir: /tmp
+
+schema_reporting:                            # Schema Reporting configuration
+  enabled:          false                    # Disabled by default
+  initial_delay:    6h                       # Maximum delay before the first schema report (actual delay is randomized)
+  execute_interval: 12h                      # Exact interval between two sequential schema reports
+  endpoint:         http://localhost/schema  # Endpoint address for schema reporting
+  method:           PUT                      # HTTP verb to use for schema reporting
+  max_retries:      3                        # Number of times a failing schema report is retried
+  retry_delay:      1m                       # Delay before a failing schema report is retried
+
+#
+# Enable SSL configuration (Disabled by default)
+#
+#ssl:
+#  enabled: true
+#  use_openssl: true
+#  handshake_timeout: 10s
+#  client_auth: NONE # valid options are NONE, REQUEST, REQUIRED
+#  accepted_protocols:
+#   - TLSv1.2
+#   - TLSv1.3
+#  cipher_suites: []
+#  keystore:
+#    type: PKCS12
+#    path: "path/to/keystore.p12"
+#    password: password
+#    check_interval: 5m
+#  truststore:
+#    path: "path/to/truststore.p12"
+#    password: password
+
+# To enable access control, the role used by sidecar to talk to Cassandra must be granted following permissions
+# - GRANT DESCRIBE ON ALL ROLES to <insert_sidecar_role>          - Allows sidecar to list roles that belong to a user
+# - GRANT SELECT ON KEYSPACE system_auth to <insert_sidecar_role> - Allows sidecar to read from roles and
+#                                                                   role_permissions table
+access_control:
+  # When enabled requests need to be authenticated and authorized before servicing.
+  enabled: false
+  # Supports setting multiple authenticators, request is authenticated when the first authenticator allows the request
+  # to go through.
+  # Out of the box, Cassandra Sidecar provides following authenticator provider factories
+  # org.apache.cassandra.sidecar.acl.authentication.{MutualTlsAuthenticationHandlerFactory, JwtAuthenticationHandlerFactory}.
+  # - MutualTlsAuthenticationHandlerFactory  allows authenticating based on user certificates
+  # - JwtAuthenticationHandlerFactory        allows authenticating with user JWT tokens
+  authenticators:
+    - class_name: org.apache.cassandra.sidecar.acl.authentication.MutualTlsAuthenticationHandlerFactory
+      parameters:
+        # Certificate validator is used to validate details within a certificate, such as issuer organization,
+        # issuer country, CNs, certificate expiry etc.
+        #
+        # io.vertx.ext.auth.mtls.impl.AllowAllCertificateValidator performs no checks, it marks all certificates as valid.
+        # other options are, io.vertx.ext.auth.mtls.impl.CertificateValidatorImpl
+        certificate_validator: io.vertx.ext.auth.mtls.impl.AllowAllCertificateValidator
+        # CertificateIdentityExtractor is used to extract valid identities from certificates. These identities will be
+        # used for authorizing users.
+        #
+        # org.apache.cassandra.sidecar.acl.authentication.CassandraIdentityExtractor verifies that identity
+        # extracted from certificate is present in identity_to_role table. Identities in identity_to_role table in
+        # Cassandra are authenticated identities in Cassandra.
+        #
+        # other options are, io.vertx.ext.auth.mtls.impl.SpiffeIdentityExtractor.
+        certificate_identity_extractor: org.apache.cassandra.sidecar.acl.authentication.CassandraIdentityExtractor
+      # JwtAuthenticationHandlerFactory adds support to authenticate users with their JWT tokens. It also includes
+      # supports for OpenID discovery.
+    - class_name: org.apache.cassandra.sidecar.acl.authentication.JwtAuthenticationHandlerFactory
+      parameters:
+        # To selectively enable or disable JWT authentication
+        enabled: false
+        # Site for sidecar to dynamically retrieve the configuration information of an OpenID provider, without
+        # having to manually configure settings like issuer etc.
+        site: https://authorization.com
+        # Client Id is a unique identifier assigned by OpenID provider. It is used to identity applications/users
+        # trying to connect.
+        client_id: recognized_client_id
+        config_discover_interval: 1h
+  authorizer:
+    # Authorization backend, implementing io.vertx.ext.auth.authorization.AuthorizationProvider; used to
+    # provide permissions a user holds.
+    # Out of the box, Cassandra Sidecar provides
+    # org.apache.cassandra.sidecar.acl.authorization.{AllowAllAuthorizationProvider, RoleBasedAuthorizationProvider}.
+    #
+    # - AllowAllAuthorizationProvider  allows any action to any user - use it to disable authorization.
+    # - RoleBasedAuthorizationProvider validates role associated with authenticated user has permission
+    #                                  for resource it accesses.
+    - class_name: org.apache.cassandra.sidecar.acl.authorization.AllowAllAuthorizationProvider
+  # Identities that are authenticated and authorized.
+  admin_identities:
+#    - spiffe://authorized/admin/identities
+  permission_cache:
+    enabled: true
+    expire_after_access: 5m
+    maximum_size: 1000
+    warmup_retries: 5
+    warmup_retry_interval: 2s
+
+driver_parameters:
+  contact_points:
+    - "127.0.0.1:9042"
+  username: cassandra
+  password: cassandra
+  ssl:
+    enabled:  false
+    keystore:
+      type: PKCS12
+      path: path/to/keystore.p12
+      password: password
+    truststore:
+      type: PKCS12
+      path: path/to/keystore.p12
+      password: password
+  num_connections: 6
+#  local_dc: datacenter1
+
+healthcheck:
+  initial_delay: 0ms
+  execute_interval: 30s
+
+# Sidecar Peer Health Monitor settings
+# Enables a periodic task checking for the health of adjacent Sidecar peers in the token ring
+sidecar_peer_health:
+  # Determines if the peer health monitor periodic task is enabled or not
+  enabled: false
+  # Time between peer health checks
+  execute_interval: 30s
+  # The amount of retries the client will attempt a request
+  max_retries: 5
+  # The initial delay between the retries the client will attempt a request
+  retry_delay: 10s
+
+# Sidecar client settings used to interact with other sidecars
+sidecar_client:
+  request_timeout: 30s                      # Time in which a request made by the sidecar client will time out
+  request_idle_timeout: 30s                 # How long the request can be idle
+
+  # More advanced options to configure the sidecar client
+
+  #connection_pool_max_size: 10              # Max size of the client connection pool
+  #connection_pool_clearing_period: 5s       # Period of time for the connection pool to clear
+  #connection_pool_event_loop_size: 0        # Defines the size of the event loop pool, set to 0 to reuse current event-loop
+  #connection_pool_max_wait_queue_size: -1   # Connection pool max time to wait on the queue size, set to -1 for an unbounded queue
+  #max_retries: 5                            # The amount of retries the client will attempt a request
+  #retry_delay: 500ms                        # The initial delay between the retries the client will attempt a request
+  #max_retry_delay: 10s                      # The max delay between the retries the client will attempt a request
+  #ssl:                                      # if ssl is enabled, this is the ssl configuration used for the sidecar client
+  #  enabled: false
+  #  keystore:
+  #    type: PKCS12                          # Keystore type
+  #    path: path/to/client/keystore.p12     # Path to the client keystore file
+  #    password: password                    # Keystore password
+  #  truststore:
+  #    type: PKCS12                          # Truststore type
+  #    path: path/to/truststore.p12          # Path to the truststore file
+  #    password: password                    # Truststore password
+
+metrics:
+  registry_name: cassandra_sidecar
+  vertx:
+    enabled: true
+    expose_via_jmx: false
+    jmx_domain_name: sidecar.vertx.jmx_domain
+  include:                                    # empty include list means include all
+    - type: "regex"                           # possible filter types are "regex" and "equals"
+      value: "Sidecar.*"
+    - type: "regex"
+      value: "vertx.*"
+  exclude:                                    # empty exclude list means exclude nothing
+#    - type: "regex"                          # possible filter types are "regex" and "equals"
+#      value: "vertx.eventbus.*"              # exclude all metrics starts with vertx.eventbus
+
+cassandra_input_validation:
+  forbidden_keyspaces:
+    - system_schema
+    - system_traces
+    - system_distributed
+    - system
+    - system_auth
+    - system_views
+    - system_virtual_schema
+    - sidecar_internal
+  allowed_chars_for_directory: "[a-zA-Z][a-zA-Z0-9_]{0,47}"
+  allowed_chars_for_quoted_name: "[a-zA-Z_0-9]{1,48}"
+  allowed_chars_for_component_name: "[a-zA-Z0-9_-]+(.db|.cql|.json|.crc32|TOC.txt)"
+  allowed_chars_for_restricted_component_name: "[a-zA-Z0-9_-]+(.db|TOC.txt)"
+
+blob_restore:
+  job_discovery_active_loop_delay: 5m
+  job_discovery_idle_loop_delay: 10m
+  job_discovery_recency_days: 5
+  slice_process_max_concurrency: 20
+  restore_job_tables_ttl: 90d
+  slow_task_threshold: 10m
+  slow_task_report_delay: 1m
+  ring_topology_refresh_delay: 1m
+
+s3_client:
+  concurrency: 4
+  thread_name_prefix: s3-client
+  thread_keep_alive: 1m
+  api_call_timeout: 1m # 1 minute
+  range_get_object_bytes_size: 5242880  # 5 MiB
+#  proxy_config:
+#    uri:
+#    username:
+#    password:
+
+live_migration:
+  # By default, the directories handled by Cassandra like data_dir, commitlog_dir, hints_dir, saved_caches_dir,
+  # cdc_dir, and local_system_data_file_dir are included as part of migration. Admin/operator can exclude files
+  # and directories from migration by specifying them in the `files_to_exclude` list and the `dirs_to_exclude`
+  # list configurations mentioned below.
+  #
+  # 'glob' and 'regex' patterns can be used to specify exclusions. Internally, Java's java.nio.file.PathMatcher
+  # is used to evaluate these exclusions. Exclusions should be specified in the format "syntax:pattern" expected
+  # by PathMatcher. There is no need to specify the absolute path of directories handled by Cassandra.
+  # They can be specified using the supported placeholders listed below.
+  #
+  #    COMMITLOG_DIR              - commit log directory
+  #    HINTS_DIR                  - hints directory
+  #    SAVED_CACHES_DIR           - saved caches directory
+  #    CDC_RAW_DIR                - cdc raw directory
+  #    LOCAL_SYSTEM_DATA_FILE_DIR - local system data file data directory
+  #    DATA_FILE_DIR              - all data directories
+  #    DATA_FILE_DIR_0            - first data directory
+  #    DATA_FILE_DIR_1            - second data directory
+  #
+  # A sample glob pattern to exclude all snapshot folders from Live Migration looks like this:
+  #    glob:${DATA_FILE_DIR}/*/*/snapshots
+  files_to_exclude: [ ]                   # List of files to exclude from Live Migration.
+  dirs_to_exclude:
+    - glob:${DATA_FILE_DIR}/*/*/snapshots # Excludes snapshot directories in data folder to copy to destination
+  migration_map:                          # Map of source and destination Cassandra instances
+#    localhost: localhost4               # This entry says that localhost will be migrated to localhost4
+
+# Configuration to allow sidecar start and stop Cassandra instances via the lifecycle API (disabled by default)
+lifecycle:
+  enabled: true
+  provider:
+    class_name: org.apache.cassandra.sidecar.lifecycle.ProcessLifecycleProvider
+    parameters:
+      state_dir: $baseDir/var/lib/cassandra-sidecar/lifecycle # The directory where the process state is stored
+      cassandra_home: $cassandraHome # The default Cassandra installation directory
+      cassandra.ring_delay_ms: 5000   # It is possible to override Cassandra JVM options via the "cassandra." prefix
+      env.MAX_HEAP_SIZE: 4G # It is possible to set environment variables used to start Cassandra via the "env" prefix
+      env.HEAP_NEWSIZE: 4G
