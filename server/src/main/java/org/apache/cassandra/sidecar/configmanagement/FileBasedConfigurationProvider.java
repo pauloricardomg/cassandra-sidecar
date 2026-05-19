@@ -107,27 +107,12 @@ public class FileBasedConfigurationProvider implements ConfigurationProvider
     private void writeToDisk(InstanceMetadata instance, ConfigurationOverlaySnapshot snapshot)
     {
         Path configFile = resolveConfigFile(instance);
-        Path tempFile = null;
         try
         {
-            Files.createDirectories(configFile.getParent());
-            tempFile = Files.createTempFile(configFile.getParent(), "config", ".tmp");
-            Files.writeString(tempFile, snapshot.toJson().encodePrettily(), StandardCharsets.UTF_8);
-            Files.move(tempFile, configFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            ConfigUtils.atomicWrite(configFile, tempPath -> Files.writeString(tempPath, snapshot.toJson().encodePrettily(), StandardCharsets.UTF_8));
         }
         catch (IOException e)
         {
-            if (tempFile != null)
-            {
-                try
-                {
-                    Files.deleteIfExists(tempFile);
-                }
-                catch (IOException suppressed)
-                {
-                    e.addSuppressed(suppressed);
-                }
-            }
             throw new UncheckedIOException("Failed to store configuration overlay for instance " + instance.id(), e);
         }
     }
