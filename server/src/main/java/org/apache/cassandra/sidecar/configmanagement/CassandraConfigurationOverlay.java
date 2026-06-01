@@ -162,6 +162,7 @@ public class CassandraConfigurationOverlay
             }
         }
 
+        validateJvmOptKeys(mergedOpts);
         validateNoConflictingBooleanOpts(mergedOpts);
 
         return new CassandraConfigurationOverlay(mergedYaml, mergedOpts);
@@ -184,6 +185,19 @@ public class CassandraConfigurationOverlay
             return "-XX:+" + key.substring(5);
         }
         return null;
+    }
+
+    private static void validateJvmOptKeys(Map<String, String> opts)
+    {
+        for (String key : opts.keySet())
+        {
+            if (!key.startsWith("-D") && !key.startsWith("-X"))
+            {
+                throw new IllegalArgumentException(
+                    "Invalid JVM option key '" + key
+                    + "': must be a system property (-D), advanced option (-XX:), or non-standard option (-X)");
+            }
+        }
     }
 
     private static void validateNoConflictingBooleanOpts(Map<String, String> opts)

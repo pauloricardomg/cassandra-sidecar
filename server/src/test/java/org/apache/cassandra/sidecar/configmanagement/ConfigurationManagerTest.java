@@ -23,15 +23,23 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.vertx.core.json.JsonObject;
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
+import org.jetbrains.annotations.NotNull;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -171,6 +179,313 @@ class ConfigurationManagerTest
         ConfigurationOverlaySnapshot second = manager.getEffectiveConfiguration(instance);
 
         assertThat(second).isSameAs(first);
+    }
+
+    @Test
+    void testPatchNoExistingOverlay()
+    {
+        ConfigurationManager manager = new ConfigurationManager(provider, BASE_TEMPLATE);
+        InstanceMetadata instance = mockInstance(1);
+
+        ConfigurationOverlaySnapshot baseEffective = manager.getEffectiveConfiguration(instance);
+        String baseHash = baseEffective.hash();
+
+        Map<String, Object> yamlUpdates = new LinkedHashMap<>();
+        yamlUpdates.put("concurrent_reads", 64);
+        Map<String, String> jvmUpdates = new LinkedHashMap<>();
+        jvmUpdates.put("-Xmx", "8g");
+
+        ConfigurationOverlaySnapshot result = manager.patchConfiguration(instance, baseHash, yamlUpdates, jvmUpdates);
+
+        assertThat(result.configuration().cassandraYaml().getInteger("concurrent_reads")).isEqualTo(64);
+        assertThat(result.configuration().extraJvmOpts()).containsEntry("-Xmx", "8g");
+        // Base values preserved
+        assertThat(result.configuration().cassandraYaml().getString("cluster_name")).isEqualTo("Test Cluster");
+        assertThat(result.hash()).startsWith("sha256:");
+        assertThat(result.hash()).isNotEqualTo(baseHash);
+    }
+
+    @Test
+    void testPatchWithExistingOverlay()
+    {
+        InstanceMetadata instance = mockInstance(1);
+
+        JsonObject initialYaml = new JsonObject().put("concurrent_reads", 64);
+        Map<String, String> initialJvm = new LinkedHashMap<>();
+        initialJvm.put("-Xmx", "4g");
+        CassandraConfigurationOverlay initial = new CassandraConfigurationOverlay(initialYaml, initialJvm);
+        provider.storeOverlay(instance, null, new ConfigurationOverlaySnapshot(Instant.now(), initial));
+
+        ConfigurationManager manager = new ConfigurationManager(provider, BASE_TEMPLATE);
+        String effectiveHash = manager.getEffectiveConfiguration(instance).hash();
+
+        Map<String, Object> yamlUpdates = new LinkedHashMap<>();
+        yamlUpdates.put("memtable_flush_writers", 4);
+
+        ConfigurationOverlaySnapshot result = manager.patchConfiguration(instance, effectiveHash, yamlUpdates, null);
+
+        // New value applied
+        assertThat(result.configuration().cassandraYaml().getInteger("memtable_flush_writers")).isEqualTo(4);
+        // Previous overlay value preserved
+        assertThat(result.configuration().cassandraYaml().getInteger("concurrent_reads")).isEqualTo(64);
+        // Previous JVM opts preserved
+        assertThat(result.configuration().extraJvmOpts()).containsEntry("-Xmx", "4g");
+        // Base value preserved
+        assertThat(result.configuration().cassandraYaml().getString("cluster_name")).isEqualTo("Test Cluster");
+    }
+
+    @Test
+    void testPatchRemovesOverlayField()
+    {
+        InstanceMetadata instance = mockInstance(1);
+
+        JsonObject initialYaml = new JsonObject().put("concurrent_reads", 128);
+        CassandraConfigurationOverlay initial = new CassandraConfigurationOverlay(initialYaml, null);
+        provider.storeOverlay(instance, null, new ConfigurationOverlaySnapshot(Instant.now(), initial));
+
+        ConfigurationManager manager = new ConfigurationManager(provider, BASE_TEMPLATE);
+        String effectiveHash = manager.getEffectiveConfiguration(instance).hash();
+
+        Map<String, Object> yamlUpdates = new LinkedHashMap<>();
+        yamlUpdates.put("concurrent_reads", null);
+
+        ConfigurationOverlaySnapshot result = manager.patchConfiguration(instance, effectiveHash, yamlUpdates, null);
+
+        // Removed from overlay, falls back to base template value
+        assertThat(result.configuration().cassandraYaml().getInteger("concurrent_reads")).isEqualTo(32);
+    }
+
+    @Test
+    void testPatchPreservesUnchangedFields()
+    {
+        InstanceMetadata instance = mockInstance(1);
+
+        JsonObject initialYaml = new JsonObject().put("concurrent_reads", 64);
+        Map<String, String> initialJvm = new LinkedHashMap<>();
+        initialJvm.put("-Xmx", "4g");
+        initialJvm.put("-Dcassandra.ring_delay_ms", "30000");
+        CassandraConfigurationOverlay initial = new CassandraConfigurationOverlay(initialYaml, initialJvm);
+        provider.storeOverlay(instance, null, new ConfigurationOverlaySnapshot(Instant.now(), initial));
+
+        ConfigurationManager manager = new ConfigurationManager(provider, BASE_TEMPLATE);
+        String effectiveHash = manager.getEffectiveConfiguration(instance).hash();
+
+        // Patch only JVM opts, not cassandraYaml
+        Map<String, String> jvmUpdates = new LinkedHashMap<>();
+        jvmUpdates.put("-Xms", "2g");
+
+        ConfigurationOverlaySnapshot result = manager.patchConfiguration(instance, effectiveHash, null, jvmUpdates);
+
+        // cassandraYaml overlay preserved
+        assertThat(result.configuration().cassandraYaml().getInteger("concurrent_reads")).isEqualTo(64);
+        // Existing JVM opts preserved, new one added
+        assertThat(result.configuration().extraJvmOpts()).containsEntry("-Xmx", "4g");
+        assertThat(result.configuration().extraJvmOpts()).containsEntry("-Dcassandra.ring_delay_ms", "30000");
+        assertThat(result.configuration().extraJvmOpts()).containsEntry("-Xms", "2g");
+    }
+
+    @Test
+    void testPatchConflictStaleHash()
+    {
+        InstanceMetadata instance = mockInstance(1);
+
+        JsonObject initialYaml = new JsonObject().put("concurrent_reads", 64);
+        CassandraConfigurationOverlay initial = new CassandraConfigurationOverlay(initialYaml, null);
+        provider.storeOverlay(instance, null, new ConfigurationOverlaySnapshot(Instant.now(), initial));
+
+        ConfigurationManager manager = new ConfigurationManager(provider, BASE_TEMPLATE);
+        String actualHash = manager.getEffectiveConfiguration(instance).hash();
+        String staleHash = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+        Map<String, Object> yamlUpdates = new LinkedHashMap<>();
+        yamlUpdates.put("concurrent_reads", 128);
+
+        assertThatThrownBy(() -> manager.patchConfiguration(instance, staleHash, yamlUpdates, null))
+                .isInstanceOf(ConfigurationConflictException.class)
+                .satisfies(e -> {
+                    ConfigurationConflictException conflict = (ConfigurationConflictException) e;
+                    assertThat(conflict.expectedHash()).isEqualTo(staleHash);
+                    assertThat(conflict.actualHash()).isEqualTo(actualHash);
+                });
+
+        // Overlay unchanged
+        assertThat(provider.getOverlay(instance).configuration().cassandraYaml().getInteger("concurrent_reads"))
+                .isEqualTo(64);
+    }
+
+    @Test
+    void testPatchStoreOverlayReturnsFalse()
+    {
+        InstanceMetadata instance = mockInstance(1);
+
+        JsonObject initialYaml = new JsonObject().put("concurrent_reads", 64);
+        CassandraConfigurationOverlay initial = new CassandraConfigurationOverlay(initialYaml, null);
+        ConfigurationOverlaySnapshot initialSnapshot = new ConfigurationOverlaySnapshot(Instant.now(), initial);
+
+        ConfigurationProvider rejectingProvider = new ConfigurationProvider()
+        {
+            private ConfigurationOverlaySnapshot stored = initialSnapshot;
+
+            @Override
+            public ConfigurationOverlaySnapshot getOverlay(InstanceMetadata inst)
+            {
+                return stored;
+            }
+
+            @Override
+            public boolean storeOverlay(InstanceMetadata inst, String originalHash,
+                                        ConfigurationOverlaySnapshot newSnapshot)
+            {
+                return false;
+            }
+        };
+
+        ConfigurationManager manager = new ConfigurationManager(rejectingProvider, BASE_TEMPLATE);
+        String effectiveHash = manager.getEffectiveConfiguration(instance).hash();
+
+        Map<String, Object> yamlUpdates = Collections.singletonMap("concurrent_reads", 128);
+
+        assertThatThrownBy(() -> manager.patchConfiguration(instance, effectiveHash, yamlUpdates, null))
+                .isInstanceOf(ConfigurationManagerException.class)
+                .isNotInstanceOf(ConfigurationConflictException.class)
+                .hasMessageContaining("Provider rejected the overlay store unexpectedly");
+    }
+
+    @Test
+    void testPatchStoreOverlayReturnsFalseWithConflict()
+    {
+        InstanceMetadata instance = mockInstance(1);
+
+        JsonObject initialYaml = new JsonObject().put("concurrent_reads", 64);
+        CassandraConfigurationOverlay initial = new CassandraConfigurationOverlay(initialYaml, null);
+        ConfigurationOverlaySnapshot initialSnapshot = new ConfigurationOverlaySnapshot(Instant.now(), initial);
+
+        // Overlay changes between storeOverlay rejection and re-read
+        JsonObject changedYaml = new JsonObject().put("concurrent_reads", 256);
+        CassandraConfigurationOverlay changed = new CassandraConfigurationOverlay(changedYaml, null);
+        ConfigurationOverlaySnapshot changedSnapshot = new ConfigurationOverlaySnapshot(Instant.now(), changed);
+
+        AtomicInteger getOverlayCallCount = new AtomicInteger(0);
+        ConfigurationProvider conflictingProvider = new ConfigurationProvider()
+        {
+            @Override
+            public ConfigurationOverlaySnapshot getOverlay(InstanceMetadata inst)
+            {
+                // First call returns initial, second call (after store rejection) returns changed
+                return getOverlayCallCount.incrementAndGet() <= 1 ? initialSnapshot : changedSnapshot;
+            }
+
+            @Override
+            public boolean storeOverlay(InstanceMetadata inst, String originalHash,
+                                        ConfigurationOverlaySnapshot newSnapshot)
+            {
+                return false;
+            }
+        };
+
+        ConfigurationManager manager = new ConfigurationManager(conflictingProvider, BASE_TEMPLATE);
+        String effectiveHash = manager.getEffectiveConfiguration(instance).hash();
+
+        Map<String, Object> yamlUpdates = Collections.singletonMap("concurrent_reads", 128);
+
+        assertThatThrownBy(() -> manager.patchConfiguration(instance, effectiveHash, yamlUpdates, null))
+                .isInstanceOf(ConfigurationConflictException.class)
+                .satisfies(e -> {
+                    ConfigurationConflictException conflict = (ConfigurationConflictException) e;
+                    assertThat(conflict.expectedHash()).isEqualTo(effectiveHash);
+                    assertThat(conflict.actualHash()).isNotEqualTo(effectiveHash);
+                });
+    }
+
+    @Test
+    void testPatchProviderFailure()
+    {
+        ConfigurationProvider failingProvider = new ConfigurationProvider()
+        {
+            @Override
+            public ConfigurationOverlaySnapshot getOverlay(InstanceMetadata instance)
+            {
+                throw new UncheckedIOException(new IOException("provider unavailable"));
+            }
+
+            @Override
+            public boolean storeOverlay(InstanceMetadata instance, String originalHash,
+                                        @NotNull ConfigurationOverlaySnapshot newSnapshot)
+            {
+                throw new UnsupportedOperationException();
+            }
+        };
+
+        ConfigurationManager manager = new ConfigurationManager(failingProvider, BASE_TEMPLATE);
+        InstanceMetadata instance = mockInstance(1);
+
+        assertThatThrownBy(() -> manager.patchConfiguration(instance, "sha256:abc", null, null))
+                .isInstanceOf(ConfigurationManagerException.class)
+                .isNotInstanceOf(ConfigurationConflictException.class)
+                .hasMessageContaining("Failed to retrieve configuration overlay from provider")
+                .hasCauseInstanceOf(UncheckedIOException.class);
+    }
+
+    @Test
+    void testPatchConcurrentSameInstance() throws Exception
+    {
+        InstanceMetadata instance = mockInstance(1);
+        ConfigurationManager manager = new ConfigurationManager(provider, BASE_TEMPLATE);
+        String baseHash = manager.getEffectiveConfiguration(instance).hash();
+
+        int threadCount = 10;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        AtomicInteger successCount = new AtomicInteger(0);
+        AtomicInteger conflictCount = new AtomicInteger(0);
+
+        List<Future<?>> futures = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++)
+        {
+            int value = i;
+            futures.add(executor.submit(() -> {
+                try
+                {
+                    startLatch.await();
+                    Map<String, Object> yamlUpdates = Collections.singletonMap("concurrent_reads", value);
+                    manager.patchConfiguration(instance, baseHash, yamlUpdates, null);
+                    successCount.incrementAndGet();
+                }
+                catch (ConfigurationConflictException e)
+                {
+                    conflictCount.incrementAndGet();
+                }
+                catch (InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                }
+            }));
+        }
+
+        startLatch.countDown();
+        for (Future<?> future : futures)
+        {
+            future.get();
+        }
+        executor.shutdown();
+
+        assertThat(successCount.get()).isEqualTo(1);
+        assertThat(conflictCount.get()).isEqualTo(threadCount - 1);
+    }
+
+    @Test
+    void testPatchInvalidJvmOptKey()
+    {
+        ConfigurationManager manager = new ConfigurationManager(provider, BASE_TEMPLATE);
+        InstanceMetadata instance = mockInstance(1);
+        String baseHash = manager.getEffectiveConfiguration(instance).hash();
+
+        Map<String, String> jvmUpdates = new LinkedHashMap<>();
+        jvmUpdates.put("invalidKey", "value");
+
+        assertThatThrownBy(() -> manager.patchConfiguration(instance, baseHash, null, jvmUpdates))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("invalidKey");
     }
 
     private static InstanceMetadata mockInstance(int id)
