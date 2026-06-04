@@ -20,17 +20,33 @@ package org.apache.cassandra.sidecar.modules;
 
 import java.nio.file.Path;
 
+import jakarta.ws.rs.GET;
+
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.google.inject.multibindings.ProvidesIntoMap;
+import org.apache.cassandra.sidecar.common.ApiEndpointsV1;
 import org.apache.cassandra.sidecar.config.ConfigurationManagementConfiguration;
 import org.apache.cassandra.sidecar.config.ParameterizedClassConfiguration;
 import org.apache.cassandra.sidecar.config.SidecarConfiguration;
 import org.apache.cassandra.sidecar.configmanagement.ConfigurationManager;
+import org.apache.cassandra.sidecar.configmanagement.ConfigurationOverlaySnapshot;
 import org.apache.cassandra.sidecar.configmanagement.ConfigurationProvider;
 import org.apache.cassandra.sidecar.configmanagement.FailurePolicy;
 import org.apache.cassandra.sidecar.configmanagement.FileBasedConfigurationProvider;
 import org.apache.cassandra.sidecar.exceptions.ConfigurationException;
+import org.apache.cassandra.sidecar.handlers.ConfigurationGetHandler;
+import org.apache.cassandra.sidecar.modules.multibindings.KeyClassMapKey;
+import org.apache.cassandra.sidecar.modules.multibindings.VertxRouteMapKeys;
+import org.apache.cassandra.sidecar.routes.RouteBuilder;
+import org.apache.cassandra.sidecar.routes.VertxRoute;
+import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.headers.Header;
+import org.eclipse.microprofile.openapi.annotations.media.Content;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 
 /**
  * Provides the configuration management capability (CEP-62)
@@ -70,5 +86,27 @@ public class ConfigurationManagementModule extends AbstractModule
         }
 
         throw new ConfigurationException("Unrecognized configuration provider: " + className);
+    }
+
+    @GET
+    @jakarta.ws.rs.Path(ApiEndpointsV1.CASSANDRA_CONFIGURATION_ROUTE)
+    @Operation(summary = "Gets effective Cassandra configuration",
+            description = "Returns the effective configuration for a local Cassandra instance, " +
+                          "computed by merging the base template with any applied overlays")
+    @APIResponse(description = "Effective configuration retrieved successfully",
+            responseCode = "200",
+            headers = @Header(name = "ETag",
+                    description = "SHA-256 hash of the effective configuration for optimistic concurrency control",
+                    schema = @Schema(type = SchemaType.STRING)),
+            content = @Content(mediaType = "application/json",
+            schema = @Schema(implementation = ConfigurationOverlaySnapshot.class)))
+    @APIResponse(responseCode = "500", description = "Configuration management error")
+    @APIResponse(responseCode = "503", description = "Configuration provider is unavailable")
+    @ProvidesIntoMap
+    @KeyClassMapKey(VertxRouteMapKeys.CassandraConfigurationGetRouteKey.class)
+    VertxRoute cassandraConfigurationGetRoute(RouteBuilder.Factory factory,
+                                              ConfigurationGetHandler handler)
+    {
+        return factory.buildRouteWithHandler(handler);
     }
 }

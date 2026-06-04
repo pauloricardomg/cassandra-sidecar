@@ -183,6 +183,9 @@ public final class ApiEndpointsV1
     // Lifecycle APIs
     public static final String LIFECYCLE_ROUTE = API_V1 + CASSANDRA + "/lifecycle";
 
+    // Configuration Management APIs (CEP-62)
+    public static final String CASSANDRA_CONFIGURATION_ROUTE = API_V1 + CASSANDRA + "/configuration";
+
     private static final String SYSTEM_API_PREFIX = API_V1 + "/system";
     public static final String SYSTEM_DISK_INFO_ROUTE = SYSTEM_API_PREFIX + "/disk-info";
 
