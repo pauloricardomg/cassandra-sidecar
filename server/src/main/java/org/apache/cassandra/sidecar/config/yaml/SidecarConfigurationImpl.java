@@ -40,6 +40,7 @@ import org.apache.cassandra.sidecar.common.server.dns.DnsResolvers;
 import org.apache.cassandra.sidecar.common.server.utils.MillisecondBoundConfiguration;
 import org.apache.cassandra.sidecar.config.AccessControlConfiguration;
 import org.apache.cassandra.sidecar.config.CassandraInputValidationConfiguration;
+import org.apache.cassandra.sidecar.config.ConfigurationManagementConfiguration;
 import org.apache.cassandra.sidecar.config.DriverConfiguration;
 import org.apache.cassandra.sidecar.config.InstanceConfiguration;
 import org.apache.cassandra.sidecar.config.LifecycleConfiguration;
@@ -126,6 +127,9 @@ public class SidecarConfigurationImpl implements SidecarConfiguration
     @JsonProperty("operational_job")
     private OperationalJobConfiguration operationalJobConfiguration;
 
+    @JsonProperty("configuration_management")
+    private ConfigurationManagementConfiguration configurationManagementConfiguration;
+
     public SidecarConfigurationImpl()
     {
         this(builder());
@@ -152,6 +156,7 @@ public class SidecarConfigurationImpl implements SidecarConfiguration
         liveMigrationConfiguration = builder.liveMigrationConfiguration;
         lifecycleConfiguration = builder.lifecycleConfiguration;
         operationalJobConfiguration = builder.operationalJobConfiguration;
+        configurationManagementConfiguration = builder.configurationManagementConfiguration;
     }
 
     /**
@@ -339,6 +344,13 @@ public class SidecarConfigurationImpl implements SidecarConfiguration
         return operationalJobConfiguration;
     }
 
+    @Override
+    @JsonProperty("configuration_management")
+    public ConfigurationManagementConfiguration configurationManagementConfiguration()
+    {
+        return configurationManagementConfiguration;
+    }
+
     public static SidecarConfigurationImpl readYamlConfiguration(Path yamlConfigurationPath) throws IOException
     {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
@@ -456,6 +468,7 @@ public class SidecarConfigurationImpl implements SidecarConfiguration
         private LiveMigrationConfiguration liveMigrationConfiguration = new LiveMigrationConfigurationImpl();
         private LifecycleConfiguration lifecycleConfiguration = new LifecycleConfigurationImpl();
         private OperationalJobConfiguration operationalJobConfiguration = new OperationalJobConfigurationImpl();
+        private ConfigurationManagementConfiguration configurationManagementConfiguration = new ConfigurationManagementConfigurationImpl();
 
         protected Builder()
         {
@@ -674,6 +687,18 @@ public class SidecarConfigurationImpl implements SidecarConfiguration
         public Builder operationalJobConfiguration(OperationalJobConfiguration operationalJobConfiguration)
         {
             return update(b -> b.operationalJobConfiguration = operationalJobConfiguration);
+        }
+
+        /**
+         * Sets the {@code configurationManagementConfiguration} and returns a reference to this Builder enabling
+         * method chaining.
+         *
+         * @param configurationManagementConfiguration the {@code configurationManagementConfiguration} to set
+         * @return a reference to this Builder
+         */
+        public Builder configurationManagementConfiguration(ConfigurationManagementConfiguration configurationManagementConfiguration)
+        {
+            return update(b -> b.configurationManagementConfiguration = configurationManagementConfiguration);
         }
 
         /**

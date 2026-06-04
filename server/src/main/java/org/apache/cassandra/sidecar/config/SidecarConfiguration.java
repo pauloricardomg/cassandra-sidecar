@@ -125,4 +125,9 @@ public interface SidecarConfiguration
      * @return the configuration for operational jobs
      */
     OperationalJobConfiguration operationalJobConfiguration();
+
+    /**
+     * @return the configuration for configuration management (CEP-62)
+     */
+    ConfigurationManagementConfiguration configurationManagementConfiguration();
 }

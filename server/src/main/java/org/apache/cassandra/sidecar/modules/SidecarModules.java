@@ -53,6 +53,7 @@ public class SidecarModules
     public static List<Module> all(@Nullable SidecarConfiguration config)
     {
         boolean cdcEnabled = config == null || config.serviceConfiguration().cdcConfiguration().isEnabled();
+        boolean configMgmtEnabled = config != null && config.configurationManagementConfiguration().enabled();
         return new Builder()
                .add(Modules.disableCircularProxiesModule())
                .add(new ApiModule())
@@ -75,6 +76,7 @@ public class SidecarModules
                .add(new UtilitiesModule())
                .add(new SysInfoModule())
                .addIf(cdcEnabled, new CdcModule())
+               .addIf(configMgmtEnabled, new ConfigurationManagementModule())
                .build();
     }
 

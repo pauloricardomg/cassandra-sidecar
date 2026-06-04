@@ -512,3 +512,13 @@ lifecycle:
 #     sys.cassandra.ring_delay_ms: 30000   # It is possible to set JVM properties via the "sys." prefix
 #     env.MAX_HEAP_SIZE: 8G # It is possible to set environment variables used to start Cassandra via the "env" prefix
 #     env.HEAP_NEWSIZE: 8G
+
+# Configuration management for Cassandra instances via Sidecar - CEP-62 (disabled by default)
+configuration_management:
+  enabled: false
+  configuration_store: /var/lib/cassandra-sidecar/configuration-store
+  templates:
+    cassandra_yaml: /etc/cassandra/cassandra.yaml
+  failure_policy: CACHED_READ_ONLY  # Options: CACHED_READ_ONLY, CACHED_READ_WRITE, FAIL
+  provider:
+    class_name: org.apache.cassandra.sidecar.configmanagement.FileBasedConfigurationProvider
