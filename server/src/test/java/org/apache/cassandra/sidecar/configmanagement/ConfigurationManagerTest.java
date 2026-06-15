@@ -130,7 +130,7 @@ class ConfigurationManagerTest
 
         assertThatThrownBy(() -> manager.getEffectiveConfiguration(instance))
                 .isInstanceOf(ConfigurationManagerException.class)
-                .hasMessageContaining("Failed to retrieve configuration overlay from provider")
+                .hasMessageContaining("Failed to get effective configuration")
                 .hasCauseInstanceOf(UncheckedIOException.class);
     }
 
@@ -398,6 +398,84 @@ class ConfigurationManagerTest
     }
 
     @Test
+    void testPatchStoreOverlayThrows()
+    {
+        InstanceMetadata instance = mockInstance(1);
+
+        JsonObject initialYaml = new JsonObject().put("concurrent_reads", 64);
+        CassandraConfigurationOverlay initial = new CassandraConfigurationOverlay(initialYaml, null);
+        ConfigurationOverlaySnapshot initialSnapshot = new ConfigurationOverlaySnapshot(Instant.now(), initial);
+
+        ConfigurationProvider failingStoreProvider = new ConfigurationProvider()
+        {
+            @Override
+            public ConfigurationOverlaySnapshot getOverlay(InstanceMetadata inst)
+            {
+                return initialSnapshot;
+            }
+
+            @Override
+            public boolean storeOverlay(InstanceMetadata inst, String originalHash,
+                                        ConfigurationOverlaySnapshot newSnapshot)
+            {
+                throw new UncheckedIOException(new IOException("storage unavailable"));
+            }
+        };
+
+        ConfigurationManager manager = new ConfigurationManager(failingStoreProvider, BASE_TEMPLATE);
+        String effectiveHash = manager.getEffectiveConfiguration(instance).hash();
+
+        Map<String, Object> yamlUpdates = Collections.singletonMap("concurrent_reads", 128);
+
+        assertThatThrownBy(() -> manager.patchConfiguration(instance, effectiveHash, yamlUpdates, null))
+                .isInstanceOf(ConfigurationManagerException.class)
+                .hasMessageContaining("Failed to patch configuration")
+                .hasCauseInstanceOf(UncheckedIOException.class);
+    }
+
+    @Test
+    void testPatchStoreRejectedReReadThrows()
+    {
+        InstanceMetadata instance = mockInstance(1);
+
+        JsonObject initialYaml = new JsonObject().put("concurrent_reads", 64);
+        CassandraConfigurationOverlay initial = new CassandraConfigurationOverlay(initialYaml, null);
+        ConfigurationOverlaySnapshot initialSnapshot = new ConfigurationOverlaySnapshot(Instant.now(), initial);
+
+        AtomicInteger getOverlayCallCount = new AtomicInteger(0);
+        ConfigurationProvider failOnReReadProvider = new ConfigurationProvider()
+        {
+            @Override
+            public ConfigurationOverlaySnapshot getOverlay(InstanceMetadata inst)
+            {
+                if (getOverlayCallCount.incrementAndGet() <= 1)
+                {
+                    return initialSnapshot;
+                }
+                throw new UncheckedIOException(new IOException("provider unavailable on re-read"));
+            }
+
+            @Override
+            public boolean storeOverlay(InstanceMetadata inst, String originalHash,
+                                        ConfigurationOverlaySnapshot newSnapshot)
+            {
+                return false;
+            }
+        };
+
+        ConfigurationManager manager = new ConfigurationManager(failOnReReadProvider, BASE_TEMPLATE);
+        String effectiveHash = manager.getEffectiveConfiguration(instance).hash();
+
+        Map<String, Object> yamlUpdates = Collections.singletonMap("concurrent_reads", 128);
+
+        assertThatThrownBy(() -> manager.patchConfiguration(instance, effectiveHash, yamlUpdates, null))
+                .isInstanceOf(ConfigurationManagerException.class)
+                .isNotInstanceOf(ConfigurationConflictException.class)
+                .hasMessageContaining("Failed to patch configuration")
+                .hasCauseInstanceOf(UncheckedIOException.class);
+    }
+
+    @Test
     void testPatchProviderFailure()
     {
         ConfigurationProvider failingProvider = new ConfigurationProvider()
@@ -422,7 +500,7 @@ class ConfigurationManagerTest
         assertThatThrownBy(() -> manager.patchConfiguration(instance, "sha256:abc", null, null))
                 .isInstanceOf(ConfigurationManagerException.class)
                 .isNotInstanceOf(ConfigurationConflictException.class)
-                .hasMessageContaining("Failed to retrieve configuration overlay from provider")
+                .hasMessageContaining("Failed to patch configuration")
                 .hasCauseInstanceOf(UncheckedIOException.class);
     }
 
@@ -484,8 +562,10 @@ class ConfigurationManagerTest
         jvmUpdates.put("invalidKey", "value");
 
         assertThatThrownBy(() -> manager.patchConfiguration(instance, baseHash, null, jvmUpdates))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("invalidKey");
+                .isInstanceOf(ConfigurationManagerException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class)
+                .hasRootCauseMessage("Invalid JVM option key 'invalidKey': must be a system property (-D),"
+                                    + " advanced option (-XX:), or non-standard option (-X)");
     }
 
     private static InstanceMetadata mockInstance(int id)

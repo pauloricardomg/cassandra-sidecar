@@ -22,7 +22,6 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
 import org.jetbrains.annotations.NotNull;
@@ -36,7 +35,6 @@ public class ConfigurationManager
     private final ConfigurationProvider provider;
     @Nullable
     private final Path baseTemplatePath;
-    private final ConcurrentHashMap<Integer, Object> instanceLocks = new ConcurrentHashMap<>();
 
     @Nullable
     private volatile ConfigurationOverlaySnapshot cachedBaseSnapshot;
@@ -62,24 +60,21 @@ public class ConfigurationManager
     @NotNull
     public ConfigurationOverlaySnapshot getEffectiveConfiguration(InstanceMetadata instance)
     {
-        ConfigurationOverlaySnapshot baseSnapshot = getBaseSnapshot();
-
-        ConfigurationOverlaySnapshot providerSnapshot;
         try
         {
-            providerSnapshot = provider.getOverlay(instance);
+            ConfigurationOverlaySnapshot baseSnapshot = getBaseSnapshot();
+            ConfigurationOverlaySnapshot providerSnapshot = provider.getOverlay(instance);
+
+            if (providerSnapshot != null)
+            {
+                return baseSnapshot.overlay(providerSnapshot, instance.id());
+            }
+            return baseSnapshot;
         }
         catch (Exception e)
         {
-            throw new ConfigurationManagerException(
-                    "Failed to retrieve configuration overlay from provider", e);
+            throw new ConfigurationManagerException("Failed to get effective configuration", e);
         }
-
-        if (providerSnapshot != null)
-        {
-            return baseSnapshot.overlay(providerSnapshot, instance.id());
-        }
-        return baseSnapshot;
     }
 
     private ConfigurationOverlaySnapshot getBaseSnapshot()
@@ -113,20 +108,11 @@ public class ConfigurationManager
         Objects.requireNonNull(instance, "instance must not be null");
         Objects.requireNonNull(expectedHash, "expectedHash must not be null");
 
-        synchronized (instanceLocks.computeIfAbsent(instance.id(), k -> new Object()))
+        try
         {
+            // 1. Read current state and validate the caller's hash matches
             ConfigurationOverlaySnapshot baseSnapshot = getBaseSnapshot();
-
-            ConfigurationOverlaySnapshot currentOverlay;
-            try
-            {
-                currentOverlay = provider.getOverlay(instance);
-            }
-            catch (Exception e)
-            {
-                throw new ConfigurationManagerException(
-                        "Failed to retrieve configuration overlay from provider", e);
-            }
+            ConfigurationOverlaySnapshot currentOverlay = provider.getOverlay(instance);
 
             ConfigurationOverlaySnapshot effectiveConfig = currentOverlay != null
                                                            ? baseSnapshot.overlay(currentOverlay, instance.id())
@@ -137,6 +123,7 @@ public class ConfigurationManager
                 throw new ConfigurationConflictException(expectedHash, effectiveConfig.hash());
             }
 
+            // 2. Apply updates to the overlay (not the effective config — base values are not persisted)
             CassandraConfigurationOverlay currentOverlayConfig = currentOverlay != null
                                                                  ? currentOverlay.configuration()
                                                                  : new CassandraConfigurationOverlay(null, null);
@@ -145,29 +132,14 @@ public class ConfigurationManager
             ConfigurationOverlaySnapshot newOverlaySnapshot = new ConfigurationOverlaySnapshot(Instant.now(),
                                                                                                updatedOverlay);
 
+            // 3. CAS via provider — concurrent patches are resolved by the provider's own atomicity
             String currentOverlayHash = currentOverlay != null ? currentOverlay.hash() : null;
-            boolean stored;
-            try
-            {
-                stored = provider.storeOverlay(instance, currentOverlayHash, newOverlaySnapshot);
-            }
-            catch (Exception e)
-            {
-                throw new ConfigurationManagerException("Failed to store configuration overlay", e);
-            }
+            boolean stored = provider.storeOverlay(instance, currentOverlayHash, newOverlaySnapshot);
 
+            // 4. Store rejected — re-read to determine if this is a true conflict or an unexpected failure
             if (!stored)
             {
-                ConfigurationOverlaySnapshot updatedCurrent;
-                try
-                {
-                    updatedCurrent = provider.getOverlay(instance);
-                }
-                catch (Exception e)
-                {
-                    throw new ConfigurationManagerException(
-                            "Failed to retrieve configuration overlay after store conflict", e);
-                }
+                ConfigurationOverlaySnapshot updatedCurrent = provider.getOverlay(instance);
                 ConfigurationOverlaySnapshot newEffective = updatedCurrent != null
                                                             ? baseSnapshot.overlay(updatedCurrent, instance.id())
                                                             : baseSnapshot;
@@ -180,6 +152,14 @@ public class ConfigurationManager
             }
 
             return baseSnapshot.overlay(newOverlaySnapshot, instance.id());
+        }
+        catch (ConfigurationManagerException e)
+        {
+            throw e;
+        }
+        catch (Exception e)
+        {
+            throw new ConfigurationManagerException("Failed to patch configuration", e);
         }
     }
 }
