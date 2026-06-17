@@ -98,6 +98,7 @@ public class BasicPermissions
 
     // Configuration management permissions (CEP-62)
     public static final Permission READ_CONFIGURATION = new DomainAwarePermission("CONFIGURATION:READ", CLUSTER_SCOPE);
+    public static final Permission MODIFY_CONFIGURATION = new DomainAwarePermission("CONFIGURATION:MODIFY", CLUSTER_SCOPE);
 
     // System information related permissions
     public static final Permission DISK_INFO = new StandardPermission("DISK_INFO:READ", CLUSTER_SCOPE);

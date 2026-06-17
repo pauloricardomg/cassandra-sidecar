@@ -20,7 +20,9 @@ package org.apache.cassandra.sidecar.modules;
 
 import java.nio.file.Path;
 
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.PATCH;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
@@ -37,6 +39,7 @@ import org.apache.cassandra.sidecar.configmanagement.FailurePolicy;
 import org.apache.cassandra.sidecar.configmanagement.FileBasedConfigurationProvider;
 import org.apache.cassandra.sidecar.exceptions.ConfigurationException;
 import org.apache.cassandra.sidecar.handlers.ConfigurationGetHandler;
+import org.apache.cassandra.sidecar.handlers.ConfigurationPatchHandler;
 import org.apache.cassandra.sidecar.modules.multibindings.KeyClassMapKey;
 import org.apache.cassandra.sidecar.modules.multibindings.VertxRouteMapKeys;
 import org.apache.cassandra.sidecar.routes.RouteBuilder;
@@ -108,5 +111,37 @@ public class ConfigurationManagementModule extends AbstractModule
                                               ConfigurationGetHandler handler)
     {
         return factory.buildRouteWithHandler(handler);
+    }
+
+    @PATCH
+    @jakarta.ws.rs.Path(ApiEndpointsV1.CASSANDRA_CONFIGURATION_ROUTE)
+    @Consumes("application/json-patch+json")
+    @Operation(summary = "Patches Cassandra configuration overlay",
+            description = "Applies RFC 6902 JSON Patch operations to the configuration overlay "
+                        + "for a local Cassandra instance. Requires If-Match header with the current "
+                        + "configuration hash for optimistic concurrency control.")
+    @APIResponse(description = "Configuration patched successfully",
+            responseCode = "200",
+            headers = @Header(name = "ETag",
+                    description = "SHA-256 hash of the updated effective configuration",
+                    schema = @Schema(type = SchemaType.STRING)),
+            content = @Content(mediaType = "application/json",
+            schema = @Schema(implementation = ConfigurationOverlaySnapshot.class)))
+    @APIResponse(responseCode = "400", description = "Invalid patch request")
+    @APIResponse(responseCode = "409", description = "Configuration conflict - hash mismatch")
+    @APIResponse(responseCode = "415", description = "Unsupported media type - requires application/json-patch+json")
+    @APIResponse(responseCode = "422", description = "Unprocessable entity - unsupported patch operation")
+    @APIResponse(responseCode = "428", description = "Precondition required - missing If-Match header")
+    @APIResponse(responseCode = "500", description = "Configuration management error")
+    @APIResponse(responseCode = "503", description = "Configuration provider is unavailable")
+    @ProvidesIntoMap
+    @KeyClassMapKey(VertxRouteMapKeys.CassandraConfigurationPatchRouteKey.class)
+    VertxRoute cassandraConfigurationPatchRoute(RouteBuilder.Factory factory,
+                                                ConfigurationPatchHandler handler)
+    {
+        return factory.builderForRoute()
+                      .setBodyHandler(true)
+                      .handler(handler)
+                      .build();
     }
 }
