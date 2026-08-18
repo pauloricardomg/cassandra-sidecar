@@ -96,6 +96,9 @@ public class BasicPermissions
     public static final Permission READ_LIFECYCLE = new DomainAwarePermission("LIFECYCLE:READ", CLUSTER_SCOPE);
     public static final Permission MODIFY_LIFECYCLE = new DomainAwarePermission("LIFECYCLE:MODIFY", CLUSTER_SCOPE);
 
+    // Configuration management permissions (CEP-62)
+    public static final Permission READ_CONFIGURATION = new DomainAwarePermission("CONFIGURATION:READ", CLUSTER_SCOPE);
+
     // System information related permissions
     public static final Permission DISK_INFO = new StandardPermission("DISK_INFO:READ", CLUSTER_SCOPE);
 }
