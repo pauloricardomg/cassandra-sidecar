@@ -39,8 +39,9 @@ import org.jetbrains.annotations.Nullable;
  * <p>Each instance's overlay is stored at {@code {configDir}/{instanceId}/overlay.json}.
  * Writes are atomic (write to temp file, then rename) to prevent corruption from crashes.
  *
- * <p>Concurrency is handled via {@link ConcurrentHashMap#compute}, which provides per-key
- * mutual exclusion.
+ * <p>Reads always go to disk so the provider never serves stale data, including when
+ * {@code overlay.json} is modified out-of-band. Writes acquire a per-instance lock to serialize the
+ * read-modify-write against concurrent writers.
  */
 public class FileBasedConfigurationProvider implements ConfigurationProvider
 {
@@ -48,7 +49,7 @@ public class FileBasedConfigurationProvider implements ConfigurationProvider
 
     private final Path configDir;
     private final String configFileName;
-    private final ConcurrentHashMap<Integer, ConfigurationOverlaySnapshot> overlays = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, Object> locks = new ConcurrentHashMap<>();
 
     public FileBasedConfigurationProvider(Path configDir)
     {
@@ -74,27 +75,24 @@ public class FileBasedConfigurationProvider implements ConfigurationProvider
                                 @NotNull ConfigurationOverlaySnapshot newSnapshot)
     {
         Objects.requireNonNull(newSnapshot, "newSnapshot must not be null");
-        boolean storeOverlay = overlays.compute(instance.id(), (k, cached) -> {
-            ConfigurationOverlaySnapshot current = cached != null ? cached : readFromDisk(instance);
+        Object lock = locks.computeIfAbsent(instance.id(), k -> new Object());
+        synchronized (lock)
+        {
+            ConfigurationOverlaySnapshot current = readFromDisk(instance);
 
             if (current == null && originalHash != null)
             {
-                return null;
+                return false;
             }
 
             if (current != null && (originalHash == null || !current.hash().equals(originalHash)))
             {
-                return current;
+                return false;
             }
 
-            return newSnapshot;
-        }) == newSnapshot;
-
-        if (storeOverlay)
-        {
             writeToDisk(instance, newSnapshot);
+            return true;
         }
-        return storeOverlay;
     }
 
     @Nullable
