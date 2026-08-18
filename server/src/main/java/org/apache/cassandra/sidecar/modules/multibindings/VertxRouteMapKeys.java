@@ -64,6 +64,11 @@ public interface VertxRouteMapKeys
         HttpMethod HTTP_METHOD = HttpMethod.GET;
         String ROUTE_URI = ApiEndpointsV1.CASSANDRA_CONFIGURATION_ROUTE;
     }
+    interface CassandraConfigurationPatchRouteKey extends RouteClassKey
+    {
+        HttpMethod HTTP_METHOD = HttpMethod.PATCH;
+        String ROUTE_URI = ApiEndpointsV1.CASSANDRA_CONFIGURATION_ROUTE;
+    }
     interface CassandraGossipHealthRouteKey extends RouteClassKey
     {
         HttpMethod HTTP_METHOD = HttpMethod.GET;
