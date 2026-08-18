@@ -24,7 +24,11 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -35,6 +39,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
+import org.apache.cassandra.sidecar.configmanagement.ConfigUtils;
+import org.apache.cassandra.sidecar.configmanagement.ConfigurationOverlaySnapshot;
 import org.apache.cassandra.sidecar.exceptions.ConfigurationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.VisibleForTesting;
@@ -44,8 +50,8 @@ import org.jetbrains.annotations.VisibleForTesting;
  */
 public class ProcessLifecycleProvider implements LifecycleProvider
 {
+    public static final String OPT_CASSANDRA_CONF_DIR = "cassandra_conf_dir";
     static final String OPT_CASSANDRA_HOME = "cassandra_home";
-    static final String OPT_CASSANDRA_CONF_DIR = "cassandra_conf_dir";
     static final String OPT_CASSANDRA_LOG_DIR = "cassandra_log_dir";
     static final String OPT_CASSANDRA_YAML_PATH = "cassandra_yaml_path";
     static final String OPT_STATE_DIR = "state_dir";
@@ -89,7 +95,20 @@ public class ProcessLifecycleProvider implements LifecycleProvider
             LOGGER.info("Cassandra instance {} is already running.", instance);
             return;
         }
-        startCassandra(instance);
+        startCassandra(instance, getRuntimeConfiguration(instance), Collections.emptyMap());
+    }
+
+    @Override
+    public void start(InstanceMetadata instance, ConfigurationOverlaySnapshot configuration)
+    {
+        if (isCassandraProcessRunning(instance))
+        {
+            LOGGER.info("Cassandra instance {} is already running.", instance);
+            return;
+        }
+        ProcessRuntimeConfiguration runtimeConfig = getRuntimeConfiguration(instance);
+        materializeConfiguration(runtimeConfig, configuration);
+        startCassandra(instance, runtimeConfig, configuration.configuration().extraJvmOpts());
     }
 
     @Override
@@ -141,9 +160,10 @@ public class ProcessLifecycleProvider implements LifecycleProvider
         }
     }
 
-    protected void startCassandra(InstanceMetadata instance)
+    protected void startCassandra(InstanceMetadata instance,
+                                  ProcessRuntimeConfiguration runtimeConfig,
+                                  Map<String, String> additionalJvmOpts)
     {
-        ProcessRuntimeConfiguration runtimeConfig = getRuntimeConfiguration(instance);
         try
         {
             Path stdoutLocation = stdoutLocation(runtimeConfig.instance());
@@ -152,6 +172,7 @@ public class ProcessLifecycleProvider implements LifecycleProvider
             ProcessBuilder processBuilder = runtimeConfig.buildStartCommand(pidFileLocation,
                                                                             stdoutLocation,
                                                                             stderrLocation);
+            appendManagedJvmOpts(processBuilder, additionalJvmOpts);
             LOGGER.info("Starting Cassandra instance {} with command: {}", runtimeConfig.instance(), processBuilder.command());
 
             Process process = processBuilder.start();
@@ -177,6 +198,66 @@ public class ProcessLifecycleProvider implements LifecycleProvider
         {
             throw new RuntimeException("Failed to start Cassandra instance " + runtimeConfig.instance() + " due to " + t.getMessage(), t);
         }
+    }
+
+    protected void materializeConfiguration(ProcessRuntimeConfiguration runtimeConfig,
+                                              ConfigurationOverlaySnapshot configuration)
+    {
+        Path confDir = runtimeConfig.cassandraConfDir;
+        Path cassandraYaml = confDir.resolve("cassandra.yaml");
+        Path cassandraYamlBkp = confDir.resolve("cassandra.yaml.bkp");
+
+        try
+        {
+            if (!Files.exists(cassandraYamlBkp) && Files.exists(cassandraYaml))
+            {
+                LOGGER.info("Existing cassandra.yaml found in configuration directory {}. " +
+                            "Creating backup at cassandra.yaml.bkp before applying managed configuration.", confDir);
+                Files.copy(cassandraYaml, cassandraYamlBkp, StandardCopyOption.COPY_ATTRIBUTES);
+            }
+
+            ConfigUtils.writeYaml(cassandraYaml, configuration.configuration().cassandraYaml());
+            LOGGER.info("Materialized managed cassandra.yaml in {}", confDir);
+        }
+        catch (Exception e)
+        {
+            throw new RuntimeException("Failed to materialize managed cassandra.yaml in " + confDir, e);
+        }
+    }
+
+    private void appendManagedJvmOpts(ProcessBuilder processBuilder, Map<String, String> additionalJvmOpts)
+    {
+        if (additionalJvmOpts.isEmpty())
+        {
+            return;
+        }
+
+        List<String> command = new ArrayList<>(processBuilder.command());
+        for (Map.Entry<String, String> entry : additionalJvmOpts.entrySet())
+        {
+            String key = entry.getKey();
+            String value = entry.getValue();
+
+            if (!ConfigUtils.isValidJvmOption(key, value))
+            {
+                LOGGER.warn("Skipping unsafe JVM option '{}' with value '{}' from managed configuration", key, value);
+                continue;
+            }
+
+            if (value == null || value.isEmpty())
+            {
+                command.add(key);
+            }
+            else if (key.startsWith("-X") && !key.startsWith("-XX:"))
+            {
+                command.add(key + value);
+            }
+            else
+            {
+                command.add(key + "=" + value);
+            }
+        }
+        processBuilder.command(command);
     }
 
     protected void stopCassandra(InstanceMetadata instance)

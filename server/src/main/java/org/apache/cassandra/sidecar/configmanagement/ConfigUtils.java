@@ -22,16 +22,20 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import io.vertx.core.json.JsonObject;
@@ -40,7 +44,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Utility methods for configuration operations: YAML loading and deep merge.
+ * Utility methods for configuration operations: YAML loading, deep merge, YAML writing,
+ * and JVM option safety validation.
  */
 public final class ConfigUtils
 {
@@ -49,9 +54,115 @@ public final class ConfigUtils
     static final YAMLFactory YAML_FACTORY = new YAMLFactory()
             .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER);
 
+    // Allows: -Dproperty.name, -Xmx, -Xss, -XX:+Flag, -XX:-Flag, -XX:Flag
+    // Rejects: -javaagent, -agentpath, -agentlib, keys with = or shell metacharacters
+    public static final Pattern JVM_OPT_KEY_PATTERN = Pattern.compile(
+            "^-(D[a-zA-Z][a-zA-Z0-9._-]*|X[a-z][a-zA-Z0-9]*|XX:[+-]?[a-zA-Z][a-zA-Z0-9_]*)$");
+
+    // JVM options that are rejected because they execute arbitrary commands or write to
+    // arbitrary filesystem paths. The value pattern permits absolute paths (Cassandra system
+    // properties legitimately need them), so path-bearing flags must be blocked by key instead.
+    public static final Set<String> BLOCKED_JVM_OPTS = Set.of(
+            // Execute arbitrary commands
+            "-XX:OnOutOfMemoryError",
+            "-XX:OnError",
+            // Write to arbitrary filesystem paths
+            "-XX:ErrorFile",
+            "-XX:HeapDumpPath",
+            "-XX:LogFile",
+            "-XX:FlightRecorderOptions",
+            "-XX:StartFlightRecording",
+            "-Xloggc",
+            "-Xlog",
+            "-Xbootclasspath");
+
+    // Allows: alphanumeric, dots, colons, slashes, @, +, commas, hyphens, braces, brackets, quotes (max 512 chars).
+    // Quotes/braces/brackets permit JSON values. Whitespace is rejected because the Cassandra launcher
+    // word-splits it; shell metacharacters (;|&$`), newlines and other control characters are also rejected.
+    public static final Pattern JVM_OPT_VALUE_PATTERN = Pattern.compile("^[a-zA-Z0-9._:/@+,\"{}\\[\\]-]{0,512}$");
+
+    // Matches /../ path traversal sequences (start, middle, or end of path)
+    public static final Pattern PATH_TRAVERSAL_PATTERN = Pattern.compile("(?:^|/)\\.\\.(?:/|$)");
+
     private ConfigUtils()
     {
         throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Validates whether a JVM option key/value pair is safe to pass to a Cassandra process.
+     *
+     * @param key   the full JVM option key including prefix (e.g. {@code -Dproperty.name})
+     * @param value the option value, may be {@code null} or empty for boolean flags
+     * @return {@code true} if the option is safe, {@code false} otherwise
+     */
+    public static boolean isValidJvmOption(@NotNull String key, @Nullable String value)
+    {
+        if (!JVM_OPT_KEY_PATTERN.matcher(key).matches())
+        {
+            return false;
+        }
+        if (BLOCKED_JVM_OPTS.contains(key))
+        {
+            return false;
+        }
+        if (value != null && !value.isEmpty())
+        {
+            if (!JVM_OPT_VALUE_PATTERN.matcher(value).matches())
+            {
+                return false;
+            }
+            if (PATH_TRAVERSAL_PATTERN.matcher(value).find())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Writes a {@link JsonObject} as YAML to the specified path. The write is atomic: content is
+     * first written to a temporary file in the same directory, then renamed to the target path.
+     *
+     * @param yamlPath the target file path
+     * @param content  the configuration to write
+     */
+    public static void writeYaml(@NotNull Path yamlPath, @NotNull JsonObject content)
+    {
+        Objects.requireNonNull(yamlPath, "yamlPath must not be null");
+        Objects.requireNonNull(content, "content must not be null");
+        Path parentDir = yamlPath.getParent();
+        if (parentDir == null)
+        {
+            throw new IllegalArgumentException("yamlPath must have a parent directory: " + yamlPath);
+        }
+        try
+        {
+            Files.createDirectories(parentDir);
+            Path tempFile = Files.createTempFile(parentDir, "cassandra-yaml-", ".tmp");
+            try
+            {
+                ObjectMapper yamlMapper = new ObjectMapper(YAML_FACTORY);
+                // Encode to JSON string first to ensure all nested JsonObject/JsonArray types
+                // are serialized as plain Maps/Lists that Jackson can write cleanly as YAML
+                String json = content.encode();
+                Object cleanMap = DatabindCodec.mapper().readValue(json, Object.class);
+                Files.writeString(tempFile,
+                        "# Auto-generated by Cassandra Sidecar configuration management. Do not modify.\n");
+                yamlMapper.writeValue(Files.newOutputStream(tempFile,
+                        java.nio.file.StandardOpenOption.APPEND), cleanMap);
+                Files.move(tempFile, yamlPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            }
+            catch (IOException e)
+            {
+                Files.deleteIfExists(tempFile);
+                throw e;
+            }
+        }
+        catch (IOException e)
+        {
+            throw new UncheckedIOException("Failed to write YAML to " + yamlPath, e);
+        }
     }
 
     /**

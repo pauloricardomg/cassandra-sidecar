@@ -18,6 +18,8 @@
 
 package org.apache.cassandra.sidecar.modules;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.Collections;
 import java.util.Map;
 
@@ -31,6 +33,8 @@ import jakarta.ws.rs.Path;
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
 import org.apache.cassandra.sidecar.common.ApiEndpointsV1;
 import org.apache.cassandra.sidecar.common.response.LifecycleInfoResponse;
+import org.apache.cassandra.sidecar.config.ConfigurationManagementConfiguration;
+import org.apache.cassandra.sidecar.config.InstanceConfiguration;
 import org.apache.cassandra.sidecar.config.LifecycleConfiguration;
 import org.apache.cassandra.sidecar.config.ParameterizedClassConfiguration;
 import org.apache.cassandra.sidecar.config.SidecarConfiguration;
@@ -72,11 +76,64 @@ public class LifecycleModule extends AbstractModule
 
         if (providerClass.className().equalsIgnoreCase(ProcessLifecycleProvider.class.getName()))
         {
+            validateBaseTemplateNotMaterializationTarget(sidecarConfiguration);
             Map<String, String> namedParams = providerClass.namedParameters();
             return new ProcessLifecycleProvider(namedParams != null ? namedParams : Collections.emptyMap());
         }
 
         throw new ConfigurationException("Unrecognized authorization provider " + providerClass.className() + " set");
+    }
+
+    /**
+     * Fails fast at startup if configuration management is enabled and its base template resolves to the same
+     * file the lifecycle provider materializes the effective configuration to
+     * ({@code <cassandra_conf_dir>/cassandra.yaml}). Sharing that file would overwrite the base template with
+     * previously merged overlays, so the two must be distinct. No-op when configuration management is disabled
+     * or no base template is configured.
+     */
+    private static void validateBaseTemplateNotMaterializationTarget(SidecarConfiguration sidecarConfiguration)
+    {
+        ConfigurationManagementConfiguration cmConfig = sidecarConfiguration.configurationManagementConfiguration();
+        if (cmConfig == null || !cmConfig.enabled()
+            || cmConfig.templates() == null || cmConfig.templates().cassandraYaml() == null)
+        {
+            return;
+        }
+
+        java.nio.file.Path baseTemplate = java.nio.file.Path.of(cmConfig.templates().cassandraYaml());
+        for (InstanceConfiguration instance : sidecarConfiguration.cassandraInstances())
+        {
+            String confDir = instance.lifecycleOptions().get(ProcessLifecycleProvider.OPT_CASSANDRA_CONF_DIR);
+            if (confDir == null)
+            {
+                continue;
+            }
+            java.nio.file.Path target = java.nio.file.Path.of(confDir).resolve("cassandra.yaml");
+            if (isSameFile(baseTemplate, target))
+            {
+                throw new ConfigurationException(
+                        "Configuration base template '" + baseTemplate + "' resolves to the same file as the "
+                        + "lifecycle materialization target '" + target + "' for instance " + instance.id()
+                        + ". They must be different files; otherwise the base template would be overwritten with "
+                        + "merged overlays. Point configuration_management.templates.cassandra_yaml at a separate file.");
+            }
+        }
+    }
+
+    private static boolean isSameFile(java.nio.file.Path a, java.nio.file.Path b)
+    {
+        try
+        {
+            if (Files.exists(a) && Files.exists(b))
+            {
+                return Files.isSameFile(a, b);
+            }
+        }
+        catch (IOException e)
+        {
+            // fall back to normalized path comparison below
+        }
+        return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
     }
 
     private static @NotNull LifecycleProvider getNoopProvider()

@@ -22,9 +22,13 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 import org.jetbrains.annotations.NotNull;
+
+import static org.apache.cassandra.sidecar.configmanagement.ConfigUtils.BLOCKED_JVM_OPTS;
+import static org.apache.cassandra.sidecar.configmanagement.ConfigUtils.JVM_OPT_KEY_PATTERN;
+import static org.apache.cassandra.sidecar.configmanagement.ConfigUtils.JVM_OPT_VALUE_PATTERN;
+import static org.apache.cassandra.sidecar.configmanagement.ConfigUtils.PATH_TRAVERSAL_PATTERN;
 
 /**
  * Validates a list of {@link ConfigurationPatchOperation} instances before application.
@@ -45,36 +49,6 @@ public final class ConfigurationPatchValidator
     static final String EXTRA_JVM_OPTS_SECTION = "extraJvmOpts";
     static final String CASSANDRA_YAML_PREFIX = PATH_PREFIX + CASSANDRA_YAML_SECTION + "/";
     static final String EXTRA_JVM_OPTS_PREFIX = PATH_PREFIX + EXTRA_JVM_OPTS_SECTION + "/";
-
-    // Allows: -Dproperty.name, -Xmx, -Xss, -XX:+Flag, -XX:-Flag, -XX:Flag
-    // Rejects: -javaagent, -agentpath, -agentlib, keys with = or shell metacharacters
-    static final Pattern JVM_OPT_KEY_PATTERN = Pattern.compile(
-            "^-(D[a-zA-Z][a-zA-Z0-9._-]*|X[a-z][a-zA-Z0-9]*|XX:[+-]?[a-zA-Z][a-zA-Z0-9_]*)$");
-
-    // JVM options that are rejected because they execute arbitrary commands or write to
-    // arbitrary filesystem paths. The value pattern permits absolute paths (Cassandra system
-    // properties legitimately need them), so path-bearing flags must be blocked by key instead.
-    static final Set<String> BLOCKED_JVM_OPTS = Set.of(
-            // Execute arbitrary commands
-            "-XX:OnOutOfMemoryError",
-            "-XX:OnError",
-            // Write to arbitrary filesystem paths
-            "-XX:ErrorFile",
-            "-XX:HeapDumpPath",
-            "-XX:LogFile",
-            "-XX:FlightRecorderOptions",
-            "-XX:StartFlightRecording",
-            "-Xloggc",
-            "-Xlog",
-            "-Xbootclasspath");
-
-    // Allows: alphanumeric, dots, colons, slashes, @, +, commas, hyphens, braces, brackets, quotes (max 512 chars).
-    // Quotes/braces/brackets permit JSON values. Whitespace is rejected because the Cassandra launcher
-    // word-splits it; shell metacharacters (;|&$`), newlines and other control characters are also rejected.
-    static final Pattern JVM_OPT_VALUE_PATTERN = Pattern.compile("^[a-zA-Z0-9._:/@+,\"{}\\[\\]-]{0,512}$");
-
-    // Matches /../ path traversal sequences (start, middle, or end of path)
-    static final Pattern PATH_TRAVERSAL_PATTERN = Pattern.compile("(?:^|/)\\.\\.(?:/|$)");
 
     private ConfigurationPatchValidator()
     {

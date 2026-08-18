@@ -19,6 +19,7 @@
 package org.apache.cassandra.sidecar.lifecycle;
 
 import org.apache.cassandra.sidecar.cluster.instance.InstanceMetadata;
+import org.apache.cassandra.sidecar.configmanagement.ConfigurationOverlaySnapshot;
 
 /**
  * Manages the lifecycle of Cassandra instances through Sidecar
@@ -31,6 +32,19 @@ public interface LifecycleProvider
      *  @param instance Cassandra instance metadata
      */
     void start(InstanceMetadata instance);
+
+    /**
+     * Start a Cassandra process with a managed configuration. Called by the lifecycle manager
+     * when configuration management is enabled, allowing the provider to materialize the
+     * effective configuration before starting.
+     *
+     * @param instance      Cassandra instance metadata
+     * @param configuration the effective configuration snapshot to apply
+     */
+    default void start(InstanceMetadata instance, ConfigurationOverlaySnapshot configuration)
+    {
+        start(instance);
+    }
 
     /**
      * Stop a Cassandra process

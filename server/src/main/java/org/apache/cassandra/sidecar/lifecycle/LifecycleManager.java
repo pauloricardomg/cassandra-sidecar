@@ -34,6 +34,8 @@ import org.apache.cassandra.sidecar.common.data.Lifecycle.CassandraState;
 import org.apache.cassandra.sidecar.common.data.Lifecycle.OperationStatus;
 import org.apache.cassandra.sidecar.common.response.LifecycleInfoResponse;
 import org.apache.cassandra.sidecar.concurrent.ExecutorPools;
+import org.apache.cassandra.sidecar.configmanagement.ConfigurationManager;
+import org.apache.cassandra.sidecar.configmanagement.ConfigurationOverlaySnapshot;
 import org.apache.cassandra.sidecar.exceptions.LifecycleTaskConflictException;
 import org.apache.cassandra.sidecar.utils.InstanceMetadataFetcher;
 
@@ -49,6 +51,7 @@ public class LifecycleManager
     private final InstanceMetadataFetcher metadataFetcher;
     private final LifecycleProvider lifecycleProvider;
     private final ExecutorPools executorPools;
+    private ConfigurationManager configurationManager;
 
     private final Set<String> convergingInstances = ConcurrentHashMap.newKeySet();
     private final Map<String, OperationStatus> lastCompletedStatus = new ConcurrentHashMap<>();
@@ -63,6 +66,12 @@ public class LifecycleManager
         this.metadataFetcher = metadataFetcher;
         this.lifecycleProvider = lifecycleProvider;
         this.executorPools = executorPools;
+    }
+
+    @Inject(optional = true)
+    void setConfigurationManager(ConfigurationManager configurationManager)
+    {
+        this.configurationManager = configurationManager;
     }
 
     public synchronized LifecycleInfoResponse updateDesiredState(String instanceId, CassandraState desiredState)
@@ -143,7 +152,16 @@ public class LifecycleManager
             try
             {
                 lastUpdateMsgByInstance.put(instanceId, "Starting instance");
-                lifecycleProvider.start(metadata(instanceId));
+                InstanceMetadata instance = metadata(instanceId);
+                if (configurationManager != null)
+                {
+                    ConfigurationOverlaySnapshot effectiveConfig = configurationManager.getEffectiveConfiguration(instance);
+                    lifecycleProvider.start(instance, effectiveConfig);
+                }
+                else
+                {
+                    lifecycleProvider.start(instance);
+                }
                 lastUpdateMsgByInstance.put(instanceId, "Instance has started");
             }
             catch (Exception e)
